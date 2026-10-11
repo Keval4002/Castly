@@ -11,8 +11,9 @@ Instagram, marketplaces and your website. Credit-based and paid: new users get f
 | Auth | Supabase Auth: email OTP / magic link + Google |
 | DB | Supabase Postgres via Drizzle ORM (RLS enabled, server-only access) |
 | Storage | Supabase Storage, private bucket, signed URLs |
-| Prompt LLM | Gemini 2.5 Flash-Lite (default) or Claude Haiku 5.5, with a deterministic template fallback |
-| Image models | Tiered router: **Quick** Seedream v4 (fal) → **Studio** Gemini 2.5 Flash Image → **Premium** OpenAI gpt-image-1, each with automatic fallback |
+| AI layer | **Vercel AI SDK** (`ai` v7): `generateText` + `Output.object` for prompts, `generateImage` with `prompt.images` for product edits |
+| Prompt LLM | Gemini 2.5 Flash-Lite (default), **Groq Llama 4 Scout (free)**, or Claude Haiku 5.5, then a deterministic template fallback |
+| Image models | Tiered router: **Quick** Seedream v4 (fal) → **Studio** Gemini 2.5 Flash Image → **Premium** OpenAI gpt-image-1, each with automatic fallback. **Free mode:** Cloudflare Workers AI FLUX.2 |
 | Payments | Razorpay Orders + Checkout + signed webhooks |
 
 ## How a generation works
@@ -54,7 +55,7 @@ Minimal `.env.local` for fully-offline dev:
 DATABASE_URL=postgres://USER:PASS@localhost:5432/castly
 AUTH_PROVIDER=dev
 STORAGE_DRIVER=local
-IMAGE_PROVIDER_MOCK=true
+IMAGE_PROVIDER_MODE=mock
 PAYMENTS_MOCK=true
 PROMPT_LLM=template
 ALLOW_INSECURE_DEV_MODE=true
@@ -65,13 +66,42 @@ npm run db:migrate
 npm run dev
 ```
 
-Add `GEMINI_API_KEY` / `FAL_KEY` / `OPENAI_API_KEY` and set `IMAGE_PROVIDER_MOCK=false` to use real
+Add `GEMINI_API_KEY` / `FAL_KEY` / `OPENAI_API_KEY` and set `IMAGE_PROVIDER_MODE=live` to use real
 models. A production build **refuses to start** with dev auth or mocks unless `ALLOW_INSECURE_DEV_MODE=true`.
+
+## Testing with free models (₹0)
+
+To run the real pipeline without spending anything:
+
+| What | Free option | Get a key |
+|---|---|---|
+| Prompt LLM | **Groq**: `meta-llama/llama-4-scout-17b-16e-instruct` (vision, very fast) | console.groq.com, no card |
+| Prompt LLM | **Gemini 2.5 Flash-Lite** free tier | aistudio.google.com |
+| Image edit | **Cloudflare Workers AI**: FLUX.2 klein 4B with a reference image (10k neurons/day) | dash.cloudflare.com → Workers AI → API token |
+| Image edit | Gemini Flash Image, *if* your free-tier key has image quota (Google has changed this several times) | aistudio.google.com |
+
+```bash
+# .env.local
+PROMPT_LLM=groq
+GROQ_API_KEY=gsk_...
+IMAGE_PROVIDER_MODE=free
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...
+
+npm run smoke -- path/to/product.jpg jewellery   # prints the prompt plan and saves images to .data/smoke/
+npm run dev                                      # or test the whole app with free models
+```
+
+In `free` mode every tier uses the free chain (Cloudflare first, then Gemini). Paid providers are never
+called, even if their keys are present. Free models are good enough to test the flow but keep the product
+less faithfully than the paid tiers, so don't judge final quality from them. You can swap in the larger
+`@cf/black-forest-labs/flux-2-dev` via `CLOUDFLARE_IMAGE_MODEL`.
 
 ## Tests
 
 ```bash
-npm test          # unit + DB integration (credits races, payments idempotency, generation lifecycle, refunds)
+npm test          # unit + DB integration (credits races, payments idempotency, generation lifecycle, refunds,
+                  # AI SDK prompt/image routing with mock models, Cloudflare free provider request shape)
 npm run test:e2e  # Playwright against a production build: signup → upload → generate → 402 → top-up → webhook → library
 ```
 

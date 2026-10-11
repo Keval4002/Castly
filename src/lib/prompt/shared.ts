@@ -18,7 +18,7 @@ export interface PromptRequest {
 export interface PromptPlan {
   productSummary: string;
   prompts: string[];
-  source: "gemini" | "claude" | "template";
+  source: "gemini" | "groq" | "claude" | "template";
 }
 
 export const llmOutputSchema = z.object({

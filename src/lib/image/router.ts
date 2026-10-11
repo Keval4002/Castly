@@ -1,16 +1,15 @@
 import "server-only";
 import { env } from "@/lib/env";
 import type { TierId } from "@/lib/pricing";
-import { falKontext, falSeedream } from "./providers/fal";
-import { geminiImage } from "./providers/gemini";
+import { falKontext, falSeedream, geminiImage, openaiImage } from "./providers/aisdk";
+import { cloudflareFlux } from "./providers/cloudflare";
 import { mockImage } from "./providers/mock";
-import { openaiImage } from "./providers/openai";
 import type { ImageProvider, ImageRequest, ImageResult } from "./types";
 
 /**
- * Provider preference per quality tier. The first available provider is
- * used; on failure we fall through to the next so one vendor outage never
- * blocks a catalogue run.
+ * Provider preference per quality tier (IMAGE_PROVIDER_MODE=live). The first
+ * available provider is used; on failure we fall through to the next so one
+ * vendor outage never blocks a catalogue run.
  */
 export const TIER_CHAINS: Record<TierId, ImageProvider[]> = {
   // Cheapest per image; good product retention for bulk drafts.
@@ -21,9 +20,18 @@ export const TIER_CHAINS: Record<TierId, ImageProvider[]> = {
   premium: [openaiImage, geminiImage, falKontext],
 };
 
+/**
+ * IMAGE_PROVIDER_MODE=free: zero-cost models for testing. Every tier uses the
+ * same chain — Cloudflare's free FLUX.2 allocation first, then Gemini (which
+ * works on a free-tier key when Google grants image quota).
+ */
+export const FREE_CHAIN: ImageProvider[] = [cloudflareFlux, geminiImage];
+
 export function providersFor(tier: TierId): ImageProvider[] {
-  if (env().IMAGE_PROVIDER_MOCK) return [mockImage];
-  return TIER_CHAINS[tier].filter((p) => p.available());
+  const mode = env().IMAGE_PROVIDER_MODE;
+  if (mode === "mock") return [mockImage];
+  const chain = mode === "free" ? FREE_CHAIN : TIER_CHAINS[tier];
+  return chain.filter((p) => p.available());
 }
 
 export class NoProviderError extends Error {}

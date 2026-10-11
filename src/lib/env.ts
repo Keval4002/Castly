@@ -32,20 +32,30 @@ const schema = z.object({
   SUPABASE_STORAGE_BUCKET: z.string().default("castly"),
   LOCAL_STORAGE_DIR: z.string().default(".data/storage"),
 
-  // Prompt LLM
-  PROMPT_LLM: z.enum(["gemini", "claude", "template"]).default("gemini"),
+  // Prompt LLM (via Vercel AI SDK). The preferred one is tried first, then any
+  // other configured LLM, then a deterministic template.
+  PROMPT_LLM: z.enum(["gemini", "groq", "claude", "template"]).default("gemini"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_PROMPT_MODEL: z.string().default("gemini-2.5-flash-lite"),
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_PROMPT_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_PROMPT_MODEL: z.string().default("claude-haiku-5-5"),
 
   // Image providers
+  /**
+   * live: paid production chains (fal / Gemini / OpenAI)
+   * free: free-tier models only (Cloudflare Workers AI FLUX.2, Gemini free quota) — for testing
+   * mock: offline compositor (dev / e2e only)
+   */
+  IMAGE_PROVIDER_MODE: z.enum(["live", "free", "mock"]).default("live"),
   GEMINI_IMAGE_MODEL: z.string().default("gemini-2.5-flash-image"),
   FAL_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
-  /** Use the mock image provider for every tier (dev / e2e only). */
-  IMAGE_PROVIDER_MOCK: bool,
+  CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
+  CLOUDFLARE_IMAGE_MODEL: z.string().default("@cf/black-forest-labs/flux-2-klein-4b"),
 
   // Payments
   RAZORPAY_KEY_ID: z.string().optional(),
@@ -76,7 +86,7 @@ export function env(): Env {
 
 function guardInsecureModes(e: Env) {
   const insecure =
-    e.AUTH_PROVIDER === "dev" || e.IMAGE_PROVIDER_MOCK || e.PAYMENTS_MOCK || e.STORAGE_DRIVER === "local";
+    e.AUTH_PROVIDER === "dev" || e.IMAGE_PROVIDER_MODE === "mock" || e.PAYMENTS_MOCK || e.STORAGE_DRIVER === "local";
   if (e.NODE_ENV === "production" && insecure && !e.ALLOW_INSECURE_DEV_MODE) {
     throw new Error(
       "Dev auth, mock providers or local storage are enabled in production. " +

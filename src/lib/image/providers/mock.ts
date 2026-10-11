@@ -12,7 +12,7 @@ import type { ImageProvider, ImageRequest, ImageResult } from "../types";
 export const mockImage: ImageProvider = {
   id: "mock",
   model: "mock-compositor",
-  available: () => env().IMAGE_PROVIDER_MOCK,
+  available: () => env().IMAGE_PROVIDER_MODE === "mock",
 
   async generate(req: ImageRequest): Promise<ImageResult> {
     const failPattern = process.env.MOCK_IMAGE_FAIL_PATTERN;

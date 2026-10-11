@@ -17,6 +17,9 @@ at **₹88**.
 | OpenAI · gpt-image-1-mini, *medium* / *high* | — (option) | $0.015 / $0.052 | ₹1.3 / ₹4.6 | Cheapest, but weaker at keeping the product identical |
 | Prompt LLM: Gemini 2.5 Flash-Lite (default) or Claude Haiku 5.5 | per batch | ~$0.0005 | ₹0.04 | ~1.5k input + 0.6k output tokens incl. a 512px preview |
 
+| **Free (testing): Cloudflare Workers AI FLUX.2 klein** | `IMAGE_PROVIDER_MODE=free` | $0 within 10k neurons/day | ₹0 | Then $0.011 / 1k neurons |
+| **Free (testing): Groq Llama 4 Scout** prompt LLM | any | $0 on free tier | ₹0 | Rate-limited (~30 req/min) |
+
 Storage and egress (Supabase) come to roughly ₹0.01 per image and can be ignored.
 
 ## 2. What a credit earns us (net)
