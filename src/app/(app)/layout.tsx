@@ -1,0 +1,15 @@
+import { redirect } from "next/navigation";
+import { AppHeader } from "@/components/AppHeader";
+import { CreditsProvider } from "@/components/CreditsProvider";
+import { getCurrentProfile } from "@/lib/auth/session";
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+  return (
+    <CreditsProvider initial={profile.credits}>
+      <AppHeader email={profile.email} />
+      <main className="flex-1">{children}</main>
+    </CreditsProvider>
+  );
+}
