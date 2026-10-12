@@ -32,7 +32,7 @@ export const mockImage: ImageProvider = {
           <stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
         <rect width="100%" height="100%" fill="url(#g)"/>
         <text x="32" y="${height - 40}" font-family="sans-serif" font-size="28" fill="white" opacity="0.85">
-          Castly mock · variant ${req.variant + 1}</text>
+          Dukaanshot mock · variant ${req.variant + 1}</text>
       </svg>`,
     );
     const product = await sharp(req.image.data)

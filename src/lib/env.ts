@@ -29,7 +29,7 @@ const schema = z.object({
 
   // Storage: "supabase" bucket or "local" filesystem (dev).
   STORAGE_DRIVER: z.enum(["supabase", "local"]).default("supabase"),
-  SUPABASE_STORAGE_BUCKET: z.string().default("castly"),
+  SUPABASE_STORAGE_BUCKET: z.string().default("dukaanshot"),
   LOCAL_STORAGE_DIR: z.string().default(".data/storage"),
 
   // Prompt LLM (via Vercel AI SDK). The preferred one is tried first, then any

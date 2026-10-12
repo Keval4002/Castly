@@ -1,7 +1,16 @@
-# Castly — AI catalogue photos for clothing & jewellery
+# Dukaanshot — AI catalogue photos for clothing & jewellery
 
 Upload one product photo and get on-model, lifestyle and studio catalogue images for WhatsApp Business,
 Instagram, marketplaces and your website. Credit-based and paid: new users get free credits, then top up via Razorpay.
+
+## Brand
+
+| | |
+|---|---|
+| Logo | `public/brand/dukaanshot-logo.png` (wordmark) and `public/brand/dukaanshot-mark.png` (shop mark). App icons are in `src/app/icon.png` and `apple-icon.png`. To update everywhere, replace the files and keep the names. |
+| Colours | Awning orange `#FA743C`, ink navy `#2B2F78`, cream `#FBF6EC`, marigold `#F6AD2F`. Tokens are in `src/app/globals.css`. |
+| Type | **Sentient** for display and the italic highlight words, **Author** for body text, **Ranade** for UI (nav, buttons, chips, labels). All three are by Indian Type Foundry and loaded from Fontshare (free for commercial use). To self-host, put the `.woff2` files in `public/fonts` and uncomment the `@font-face` block in `globals.css`. |
+| Art | `BazaarScene` and `Toran` (`src/components/brand/`) are a pure-SVG illustrated backdrop: sky, hills, striped-awning shops, marigold meadow and bunting. |
 
 ## Stack
 
@@ -65,14 +74,14 @@ pick it up automatically. Add its `productTypes` too, and the classifier will le
 ```bash
 npm install
 # Postgres running locally
-createdb castly && createdb castly_test
+createdb dukaanshot && createdb dukaanshot_test
 cp .env.example .env.local   # then set the values below
 ```
 
 Minimal `.env.local` for fully-offline dev:
 
 ```
-DATABASE_URL=postgres://USER:PASS@localhost:5432/castly
+DATABASE_URL=postgres://USER:PASS@localhost:5432/dukaanshot
 AUTH_PROVIDER=dev
 STORAGE_DRIVER=local
 IMAGE_PROVIDER_MODE=mock
@@ -125,12 +134,12 @@ npm test          # unit + DB integration (credits races, payments idempotency, 
 npm run test:e2e  # Playwright against a production build: signup → upload → generate → 402 → top-up → webhook → library
 ```
 
-Set `PLAYWRIGHT_CHROMIUM_PATH` if you use a system Chromium. Both suites use the `castly_test` database.
+Set `PLAYWRIGHT_CHROMIUM_PATH` if you use a system Chromium. Both suites use the `dukaanshot_test` database.
 
 ## Production setup checklist
 
 1. **Supabase:** create a project. Copy the URL, anon key and service-role key. Use the *transaction pooler*
-   connection string for `DATABASE_URL`. Create a **private** storage bucket `castly`.
+   connection string for `DATABASE_URL`. Create a **private** storage bucket `dukaanshot`.
 2. **Auth:** enable Email (OTP) and Google providers. Add `https://YOUR_DOMAIN/auth/callback` to the
    redirect URLs. Include `{{ .Token }}` in the magic-link email template so users can type the code.
 3. Run `npm run db:migrate` against production.

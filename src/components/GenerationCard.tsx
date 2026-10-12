@@ -26,7 +26,7 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
 
   async function downloadAll() {
     for (const img of done) {
-      if (img.url) await downloadImage(img.url, `castly-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`);
+      if (img.url) await downloadImage(img.url, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`);
     }
   }
 
@@ -74,7 +74,7 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
                 </button>
                 <button
                   className="absolute bottom-2 right-2 rounded-full bg-white/90 px-3 py-1 text-xs font-medium opacity-100 shadow sm:opacity-0 sm:group-hover:opacity-100"
-                  onClick={() => img.url && downloadImage(img.url, `castly-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
+                  onClick={() => img.url && downloadImage(img.url, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
                 >
                   Download
                 </button>
@@ -145,7 +145,7 @@ function Lightbox({
       <div className="absolute right-4 top-4 flex gap-2" onClick={(e) => e.stopPropagation()}>
         <button
           className="btn bg-white text-ink"
-          onClick={() => downloadImage(img.url!, `castly-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
+          onClick={() => downloadImage(img.url!, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
         >
           Download
         </button>

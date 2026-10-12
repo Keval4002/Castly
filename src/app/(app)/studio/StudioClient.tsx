@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
+import { BazaarScene } from "@/components/brand/BazaarScene";
 import { useCredits } from "@/components/CreditsProvider";
 import { GenerationCard } from "@/components/GenerationCard";
 import {
@@ -484,8 +485,8 @@ function DetectionSummary({ detection, label }: { detection: Classification | nu
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-ink text-xs text-white">{n}</span>
+      <h2 className="mb-3 flex items-center gap-2 font-ui text-sm font-semibold tracking-normal">
+        <span className="grid h-6 w-6 place-items-center rounded-full bg-navy font-ui text-xs text-white">{n}</span>
         {title}
       </h2>
       {children}
@@ -520,9 +521,12 @@ function Group({ group, value, onChange }: { group: OptionGroup; value: string; 
 
 function EmptyState() {
   return (
-    <div className="card grid min-h-[420px] place-items-center p-8 text-center">
-      <div className="max-w-sm">
-        <p className="font-display text-3xl">Your catalogue shots appear here</p>
+    <div className="relative isolate grid min-h-[460px] place-items-center overflow-hidden rounded-3xl border border-line p-8 text-center">
+      <BazaarScene className="absolute inset-0 -z-10 h-full w-full opacity-90" />
+      <div className="max-w-sm rounded-2xl bg-surface/90 p-6 backdrop-blur">
+        <p className="font-display text-3xl">
+          Your catalogue shots <span className="italic text-brand">appear here</span>
+        </p>
         <p className="mt-2 text-sm text-ink-2">
           Upload one product photo, pick a look and hit generate. Each run creates fresh, unique variations — ready for
           WhatsApp, Instagram and your store.

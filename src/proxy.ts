@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED = ["/studio", "/library", "/credits"];
-const DEV_COOKIE = "castly_dev_session";
+const DEV_COOKIE = "dukaanshot_dev_session";
 
 /**
  * Refreshes the Supabase session cookie on every page navigation and sends
