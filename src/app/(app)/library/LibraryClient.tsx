@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowRight, Plus } from "lucide-react";
+
 import Link from "next/link";
 import { useState } from "react";
 import { GenerationCard } from "@/components/GenerationCard";
@@ -36,12 +38,16 @@ export function LibraryClient({ initial }: { initial: GenerationDTO[] }) {
           <p className="text-sm text-ink-2">Every batch you’ve generated. Links refresh each time you open this page.</p>
         </div>
         <Link href="/studio" className="btn-primary">
+          <Plus className="h-4 w-4" aria-hidden />
           New batch
         </Link>
       </div>
       {gens.length === 0 ? (
         <div className="card p-10 text-center text-ink-2">
-          Nothing here yet. <Link href="/studio" className="text-brand underline">Create your first catalogue shots →</Link>
+          Nothing here yet.{" "}
+          <Link href="/studio" className="inline-flex items-center gap-1 text-brand underline">
+            Create your first catalogue shots <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
         </div>
       ) : (
         gens.map((g) => <GenerationCard key={g.id} gen={g} />)

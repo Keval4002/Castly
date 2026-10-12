@@ -1,5 +1,19 @@
 "use client";
 
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Download,
+  ImageOff,
+  Info,
+  Loader2,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { aspectRatio, CATEGORIES, productType, type CategoryId } from "@/lib/catalog/options";
 import { describeCorrection } from "@/lib/classify/reconcile";
@@ -47,11 +61,13 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
         <StatusPill gen={gen} />
         {!active && done.length > 0 && (
           <button className="btn-ghost px-3 py-1.5 text-xs" onClick={downloadAll}>
+            <Download className="h-3.5 w-3.5" aria-hidden />
             Download all
           </button>
         )}
         {!active && onRerun && (
           <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => onRerun(gen)} title="New unique variations with the same settings">
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             Generate again
           </button>
         )}
@@ -73,17 +89,21 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
                   <img src={img.thumbUrl} alt={`Variant ${img.idx + 1}`} className="h-full w-full object-cover" loading="lazy" />
                 </button>
                 <button
-                  className="absolute bottom-2 right-2 rounded-full bg-white/90 px-3 py-1 text-xs font-medium opacity-100 shadow sm:opacity-0 sm:group-hover:opacity-100"
+                  className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 font-ui text-xs font-medium opacity-100 shadow sm:opacity-0 sm:group-hover:opacity-100"
                   onClick={() => img.url && downloadImage(img.url, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
                 >
+                  <Download className="h-3.5 w-3.5" aria-hidden />
                   Download
                 </button>
               </>
             ) : img.status === "failed" ? (
-              <div className="grid h-full place-items-center p-3 text-center text-xs text-ink-2">
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-ink-2">
+                <ImageOff className="h-5 w-5 text-ink-3" aria-hidden />
+                <span>
                 Couldn’t generate this one.
                 <br />
                 Credits refunded.
+                </span>
               </div>
             ) : (
               <div className="shimmer h-full w-full" />
@@ -92,7 +112,8 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
         ))}
       </div>
       {gen.corrections.length > 0 && (
-        <p className="px-4 pb-3 text-xs text-blue-800" data-testid="card-correction">
+        <p className="flex items-center gap-1.5 px-4 pb-3 text-xs text-navy" data-testid="card-correction">
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Auto-corrected from your photo: {gen.corrections.map(describeCorrection).join("; ")}
         </p>
       )}
@@ -106,15 +127,20 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
 }
 
 function StatusPill({ gen }: { gen: GenerationDTO }) {
-  const map: Record<GenerationDTO["status"], [string, string]> = {
-    queued: ["Queued", "bg-surface-2 text-ink-2"],
-    running: ["Generating…", "bg-brand-soft text-brand"],
-    succeeded: ["Ready", "bg-green-50 text-ok"],
-    partial: [`Partly ready · ${gen.refundedCredits} refunded`, "bg-amber-50 text-warn"],
-    failed: ["Failed · refunded", "bg-red-50 text-err"],
+  const map: Record<GenerationDTO["status"], [string, string, typeof Clock]> = {
+    queued: ["Queued", "bg-surface-2 text-ink-2", Clock],
+    running: ["Generating…", "bg-brand-soft text-brand", Loader2],
+    succeeded: ["Ready", "bg-green-50 text-ok", CircleCheck],
+    partial: [`Partly ready · ${gen.refundedCredits} refunded`, "bg-amber-50 text-warn", CircleAlert],
+    failed: ["Failed · refunded", "bg-red-50 text-err", CircleX],
   };
-  const [label, cls] = map[gen.status];
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>{label}</span>;
+  const [label, cls, Icon] = map[gen.status];
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-ui text-xs font-medium ${cls}`}>
+      <Icon className={`h-3.5 w-3.5 ${gen.status === "running" ? "animate-spin" : ""}`} aria-hidden />
+      {label}
+    </span>
+  );
 }
 
 function Lightbox({
@@ -147,33 +173,35 @@ function Lightbox({
           className="btn bg-white text-ink"
           onClick={() => downloadImage(img.url!, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
         >
+          <Download className="h-4 w-4" aria-hidden />
           Download
         </button>
         <button className="btn bg-white/20 text-white" onClick={onClose}>
+          <X className="h-4 w-4" aria-hidden />
           Close
         </button>
       </div>
       {ok.length > 1 && (
         <>
           <button
-            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-white/20 px-4 py-3 text-white"
+            className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/20 text-white hover:bg-white/30"
             onClick={(e) => {
               e.stopPropagation();
               onNav(ok[(pos - 1 + ok.length) % ok.length].idx);
             }}
             aria-label="Previous"
           >
-            ‹
+            <ChevronLeft className="h-6 w-6" aria-hidden />
           </button>
           <button
-            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-white/20 px-4 py-3 text-white"
+            className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/20 text-white hover:bg-white/30"
             onClick={(e) => {
               e.stopPropagation();
               onNav(ok[(pos + 1) % ok.length].idx);
             }}
             aria-label="Next"
           >
-            ›
+            <ChevronRight className="h-6 w-6" aria-hidden />
           </button>
         </>
       )}

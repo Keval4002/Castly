@@ -1,5 +1,7 @@
 "use client";
 
+import { Coins } from "lucide-react";
+
 import { createContext, useContext, useState } from "react";
 
 const Ctx = createContext<{ credits: number; setCredits: (n: number) => void } | null>(null);
@@ -21,10 +23,10 @@ export function CreditsBadge() {
     <a
       href="/credits"
       data-testid="credits-badge"
-      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-ui text-sm font-medium hover:bg-surface-2"
       title="Your credits — click to top up"
     >
-      <span className="inline-block h-2 w-2 rounded-full bg-brand" />
+      <Coins className="h-4 w-4 text-brand" aria-hidden />
       <span data-testid="credits-value">{credits}</span>
       <span className="text-ink-2">credits</span>
     </a>

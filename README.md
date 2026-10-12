@@ -10,7 +10,8 @@ Instagram, marketplaces and your website. Credit-based and paid: new users get f
 | Logo | `public/brand/dukaanshot-logo.png` (wordmark) and `public/brand/dukaanshot-mark.png` (shop mark). App icons are in `src/app/icon.png` and `apple-icon.png`. To update everywhere, replace the files and keep the names. |
 | Colours | Awning orange `#FA743C`, ink navy `#2B2F78`, cream `#FBF6EC`, marigold `#F6AD2F`. Tokens are in `src/app/globals.css`. |
 | Type | **Sentient** for display and the italic highlight words, **Author** for body text, **Ranade** for UI (nav, buttons, chips, labels). All three are by Indian Type Foundry and loaded from Fontshare (free for commercial use). To self-host, put the `.woff2` files in `public/fonts` and uncomment the `@font-face` block in `globals.css`. |
-| Art | `BazaarScene` and `Toran` (`src/components/brand/`) are a pure-SVG illustrated backdrop: sky, hills, striped-awning shops, marigold meadow and bunting. |
+| Icons | [Lucide](https://lucide.dev) line icons everywhere (`lucide-react`). Don't use emoji or unicode symbols. |
+| Images | Every site image is listed in `src/lib/site-images.ts` and stored in `public/images/`. They start as plain placeholders; generate the real ones with `docs/IMAGE_PROMPTS.md`. To replace one, overwrite the file and keep the name and aspect ratio. |
 
 ## Stack
 

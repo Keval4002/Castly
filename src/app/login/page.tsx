@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { BazaarScene } from "@/components/brand/BazaarScene";
+import Image from "next/image";
 import { Logo } from "@/components/Logo";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { env } from "@/lib/env";
 import { SIGNUP_BONUS_CREDITS } from "@/lib/pricing";
+import { SITE_IMAGES } from "@/lib/site-images";
 import { LoginForm } from "./LoginForm";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -12,7 +13,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   return (
     <div className="relative isolate grid min-h-screen place-items-center overflow-hidden px-4 py-10">
-      <BazaarScene className="absolute inset-0 -z-20 h-full w-full" />
+      <Image src={SITE_IMAGES.loginBackground.src} alt="" fill priority sizes="100vw" className="-z-20 object-cover" />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/40 to-bg/70" />
       <div className="hero-grid absolute inset-0 -z-10" />
       <div className="w-full max-w-sm">
         <div className="mb-6 flex justify-center rounded-full bg-white/75 px-5 py-3 backdrop-blur">

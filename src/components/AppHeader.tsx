@@ -1,14 +1,16 @@
 "use client";
 
+import { Images, LogOut, Wallet, Wand2 } from "lucide-react";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CreditsBadge } from "./CreditsProvider";
 import { Logo } from "./Logo";
 
 const NAV = [
-  { href: "/studio", label: "Studio" },
-  { href: "/library", label: "Library" },
-  { href: "/credits", label: "Credits" },
+  { href: "/studio", label: "Studio", icon: Wand2 },
+  { href: "/library", label: "Library", icon: Images },
+  { href: "/credits", label: "Credits", icon: Wallet },
 ];
 
 export function AppHeader({ email }: { email: string }) {
@@ -28,10 +30,11 @@ export function AppHeader({ email }: { email: string }) {
             <Link
               key={n.href}
               href={n.href}
-              className={`rounded-full px-3 py-1.5 text-sm ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-ui text-sm ${
                 pathname.startsWith(n.href) ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:text-ink"
               }`}
             >
+              <n.icon className="h-4 w-4" aria-hidden />
               {n.label}
             </Link>
           ))}
@@ -45,11 +48,20 @@ export function AppHeader({ email }: { email: string }) {
             <div className="card absolute right-0 mt-2 w-56 p-2 shadow-lg">
               <p className="truncate px-3 py-2 text-xs text-ink-2">{email}</p>
               {NAV.map((n) => (
-                <Link key={n.href} href={n.href} className="block rounded-lg px-3 py-2 text-sm hover:bg-surface-2 sm:hidden">
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 font-ui text-sm hover:bg-surface-2 sm:hidden"
+                >
+                  <n.icon className="h-4 w-4" aria-hidden />
                   {n.label}
                 </Link>
               ))}
-              <button onClick={logout} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2">
+              <button
+                onClick={logout}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-ui text-sm hover:bg-surface-2"
+              >
+                <LogOut className="h-4 w-4" aria-hidden />
                 Sign out
               </button>
             </div>
