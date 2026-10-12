@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { BazaarScene, Toran } from "@/components/brand/BazaarScene";
+import { ArrowRight, Plus, Share2, SlidersHorizontal, Store, Upload } from "lucide-react";
+import Image from "next/image";
+import { CategoryIcon } from "@/components/CategoryIcon";
 import { HeroPreview } from "@/components/brand/HeroPreview";
 import { Logo } from "@/components/Logo";
 import { CATEGORY_LIST } from "@/lib/catalog/options";
+import { SITE_IMAGES } from "@/lib/site-images";
 import { CREDIT_PACKS, formatINR, SIGNUP_BONUS_CREDITS, TIER_ORDER, TIERS } from "@/lib/pricing";
 
 const NAV = [
@@ -13,9 +16,9 @@ const NAV = [
 ];
 
 const STEPS = [
-  { title: "Upload one photo", body: "Any clear phone photo — on a hanger, on the floor or on the counter. We detect what it is." },
-  { title: "Pick a look", body: "On-model, flat lay, luxury velvet, festive… one tap presets, or fine-tune model, pose and setting." },
-  { title: "Share & sell", body: "Unique, catalogue-ready images sized for WhatsApp, Instagram and your store — in seconds." },
+  { icon: Upload, title: "Upload one photo", body: "Any clear phone photo — on a hanger, on the floor or on the counter. We detect what it is." },
+  { icon: SlidersHorizontal, title: "Pick a look", body: "On-model, flat lay, luxury velvet, festive… one tap presets, or fine-tune model, pose and setting." },
+  { icon: Share2, title: "Share & sell", body: "Unique, catalogue-ready images sized for WhatsApp, Instagram and your store — in seconds." },
 ];
 
 const CHANNELS = ["WhatsApp Business", "Instagram", "Meesho", "Amazon", "Flipkart", "Shopify"];
@@ -46,9 +49,17 @@ export default function Landing() {
       {/* ---------- Hero ---------- */}
       <section className="px-2 pt-2 sm:px-4 sm:pt-4">
         <div className="relative isolate overflow-hidden rounded-[28px] sm:rounded-[36px]">
-          <BazaarScene className="absolute inset-0 -z-20 h-full w-full" />
+          <Image
+            src={SITE_IMAGES.heroBackground.src}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="-z-20 object-cover object-bottom"
+          />
+          {/* keeps the headline readable over any background photo */}
+          <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/70 via-white/35 to-transparent" />
           <div className="hero-grid absolute inset-0 -z-10" />
-          <Toran className="pointer-events-none absolute inset-x-0 top-[72px] -z-10 h-12 w-full sm:top-[92px] sm:h-[72px]" />
 
           {/* floating pill nav */}
           <header className="relative z-10 flex justify-center px-3 pt-4 sm:pt-6">
@@ -74,7 +85,7 @@ export default function Landing() {
 
           <div className="relative px-4 pb-0 pt-20 text-center sm:pt-28">
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 font-ui text-xs font-medium text-navy backdrop-blur">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" /> For clothing & jewellery sellers
+              <Store className="h-3.5 w-3.5 text-brand" aria-hidden /> For clothing & jewellery sellers
             </p>
             <h1 className="mx-auto mt-6 max-w-5xl font-display text-[2.35rem] leading-[1.12] text-ink sm:text-6xl lg:text-7xl">
               Shoot your <span className="mark-orange whitespace-nowrap">whole catalogue</span>
@@ -87,7 +98,7 @@ export default function Landing() {
             </p>
             <div className="mt-8 flex flex-col items-center gap-3">
               <Link href="/login" className="btn-brand px-7 py-3.5 text-base" data-testid="hero-cta">
-                Try free — {SIGNUP_BONUS_CREDITS} credits <span aria-hidden>»</span>
+                Try free — {SIGNUP_BONUS_CREDITS} credits <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
               <p className="font-ui text-xs text-ink-2">No card needed · Pay with UPI when you need more</p>
             </div>
@@ -119,9 +130,12 @@ export default function Landing() {
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {STEPS.map((s, i) => (
               <div key={s.title} className="card p-6">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-navy font-ui text-sm font-semibold text-white">
-                  {i + 1}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-navy-soft text-navy">
+                    <s.icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <span className="font-ui text-xs font-semibold uppercase tracking-[0.12em] text-ink-3">Step {i + 1}</span>
+                </div>
                 <h3 className="mt-4 text-2xl">{s.title}</h3>
                 <p className="mt-2 text-ink-2">{s.body}</p>
               </div>
@@ -138,8 +152,20 @@ export default function Landing() {
             </h2>
             <div className="mt-10 grid gap-4 md:grid-cols-2">
               {CATEGORY_LIST.map((c) => (
-                <div key={c.id} className="rounded-3xl border border-line bg-bg p-7">
-                  <p className="text-3xl">{c.emoji}</p>
+                <div key={c.id} className="overflow-hidden rounded-3xl border border-line bg-bg">
+                  <div className="relative aspect-[3/2] bg-surface-2">
+                    <Image
+                      src={(c.id === "clothing" ? SITE_IMAGES.categoryClothing : SITE_IMAGES.categoryJewellery).src}
+                      alt={(c.id === "clothing" ? SITE_IMAGES.categoryClothing : SITE_IMAGES.categoryJewellery).alt}
+                      fill
+                      sizes="(min-width: 768px) 560px, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="p-7">
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-navy-soft text-navy">
+                    <CategoryIcon icon={c.icon} className="h-5 w-5" />
+                  </span>
                   <h3 className="mt-2 text-3xl">{c.label}</h3>
                   <p className="text-ink-2">{c.description}</p>
                   <p className="label mt-5">Looks</p>
@@ -157,6 +183,7 @@ export default function Landing() {
                       .map((t) => t.label)
                       .join(" · ")}
                   </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -214,7 +241,7 @@ export default function Landing() {
               <details key={f.q} className="group py-5">
                 <summary className="flex cursor-pointer list-none items-center justify-between font-ui text-lg font-medium">
                   {f.q}
-                  <span className="ml-4 text-brand transition group-open:rotate-45">+</span>
+                  <Plus className="ml-4 h-5 w-5 shrink-0 text-brand transition group-open:rotate-45" aria-hidden />
                 </summary>
                 <p className="mt-2 text-ink-2">{f.a}</p>
               </details>
@@ -225,7 +252,8 @@ export default function Landing() {
         {/* final CTA */}
         <section className="px-2 pb-4 sm:px-4">
           <div className="relative isolate overflow-hidden rounded-[28px] bg-navy px-6 py-16 text-center text-white sm:rounded-[36px]">
-            <BazaarScene className="absolute inset-0 -z-10 h-full w-full opacity-25 mix-blend-luminosity" />
+            <Image src={SITE_IMAGES.ctaBackground.src} alt="" fill sizes="100vw" className="-z-20 object-cover" />
+            <div className="absolute inset-0 -z-10 bg-navy/80" />
             <h2 className="mx-auto max-w-3xl text-4xl sm:text-6xl">
               Open your dukaan to <span className="italic text-marigold">better photos</span>.
             </h2>
@@ -233,7 +261,7 @@ export default function Landing() {
               Your first {SIGNUP_BONUS_CREDITS / TIERS.standard.creditsPerImage} Studio images are on us.
             </p>
             <Link href="/login" className="btn-brand mt-8 px-7 py-3.5 text-base">
-              Create my first catalogue shots <span aria-hidden>»</span>
+              Create my first catalogue shots <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
           </div>
         </section>

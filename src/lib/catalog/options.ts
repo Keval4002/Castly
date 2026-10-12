@@ -47,7 +47,8 @@ export interface Category {
   id: CategoryId;
   label: string;
   description: string;
-  emoji: string;
+  /** Icon key, rendered by <CategoryIcon> (lucide). */
+  icon: "shirt" | "gem";
   groups: OptionGroup[];
   presets: Preset[];
   productTypes: ProductType[];
@@ -107,7 +108,7 @@ const clothing: Category = {
   id: "clothing",
   label: "Clothing",
   description: "Sarees, kurtas, dresses, tops, menswear, kidswear",
-  emoji: "👗",
+  icon: "shirt",
   productTypes: [
     { id: "saree", label: "Saree", noun: "saree" },
     { id: "lehenga", label: "Lehenga", noun: "lehenga choli set" },
@@ -266,7 +267,7 @@ const jewellery: Category = {
   id: "jewellery",
   label: "Jewellery",
   description: "Necklaces, earrings, rings, bangles, bridal sets",
-  emoji: "💍",
+  icon: "gem",
   productTypes: [
     { id: "necklace", label: "Necklace", noun: "necklace", wornOn: "around the neck" },
     { id: "pendant", label: "Pendant / chain", noun: "pendant on a chain", wornOn: "around the neck" },

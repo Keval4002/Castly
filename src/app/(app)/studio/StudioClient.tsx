@@ -2,7 +2,21 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { BazaarScene } from "@/components/brand/BazaarScene";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  CircleCheck,
+  CircleHelp,
+  ImagePlus,
+  Info,
+  Loader2,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
+import Image from "next/image";
+import { CategoryIcon } from "@/components/CategoryIcon";
+import { SITE_IMAGES } from "@/lib/site-images";
 import { useCredits } from "@/components/CreditsProvider";
 import { GenerationCard } from "@/components/GenerationCard";
 import {
@@ -244,8 +258,12 @@ export function StudioClient({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={asset.thumbUrl} alt="Your product" className="h-20 w-20 rounded-xl object-cover" data-testid="upload-preview" />
             ) : (
-              <div className={`grid h-20 w-20 place-items-center rounded-xl bg-surface-2 text-2xl ${uploading ? "shimmer" : ""}`}>
-                {uploading ? "" : "＋"}
+              <div className={`grid h-20 w-20 place-items-center rounded-xl bg-surface-2 text-ink-2 ${uploading ? "shimmer" : ""}`}>
+                {uploading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
+                ) : (
+                  <ImagePlus className="h-7 w-7" strokeWidth={1.5} aria-hidden />
+                )}
               </div>
             )}
             <div className="text-sm">
@@ -266,7 +284,9 @@ export function StudioClient({
                 data-testid={`category-${c.id}`}
                 className="card p-3 text-left transition data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
               >
-                <span className="text-xl">{c.emoji}</span>
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-surface-2 text-navy">
+                  <CategoryIcon icon={c.icon} className="h-5 w-5" />
+                </span>
                 <p className="mt-1 font-medium">{c.label}</p>
                 <p className="text-xs text-ink-2">{c.description}</p>
               </button>
@@ -286,7 +306,9 @@ export function StudioClient({
                   onClick={() => setProductTypeId(productTypeId === t.id ? null : t.id)}
                 >
                   {t.label}
-                  {detection?.productType === t.id && detection.category === category && " ✓"}
+                  {detection?.productType === t.id && detection.category === category && (
+                    <Check className="ml-1 inline h-3.5 w-3.5 align-[-2px]" aria-label="detected" />
+                  )}
                 </button>
               ))}
             </div>
@@ -294,14 +316,20 @@ export function StudioClient({
           {(mismatch || unsupported) && (
             <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-warn" data-testid="detection-mismatch">
               {unsupported ? (
-                <p>
+                <p className="flex gap-2">
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
                   This photo doesn’t look like clothing or jewellery
                   {detection!.description ? ` (we see: ${detection!.description})` : ""}. Results may be poor.
+                  </span>
                 </p>
               ) : (
-                <p>
+                <p className="flex gap-2">
+                  <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
                   This photo looks like <b>{detectedLabel}</b> ({CATEGORIES[detection!.category as CategoryId].label}).{" "}
                   {override ? "We’ll use your selection." : `We’ll generate it as ${detectedLabel} for accurate results.`}
+                  </span>
                 </p>
               )}
               <label className="mt-2 flex items-center gap-2 text-ink">
@@ -336,8 +364,13 @@ export function StudioClient({
               <Group key={g.id} group={g} value={values[g.id]} onChange={(v) => setOption(g.id, v)} />
             ))}
             {advanced.length > 0 && (
-              <button className="text-sm font-medium text-brand" onClick={() => setShowAdvanced((s) => !s)}>
-                {showAdvanced ? "− Fewer options" : `+ More options (${advanced.map((g) => g.label.toLowerCase()).join(", ")})`}
+              <button
+                className="inline-flex items-center gap-1 font-ui text-sm font-medium text-brand"
+                onClick={() => setShowAdvanced((s) => !s)}
+                aria-expanded={showAdvanced}
+              >
+                <ChevronDown className={`h-4 w-4 transition ${showAdvanced ? "rotate-180" : ""}`} aria-hidden />
+                {showAdvanced ? "Fewer options" : `More options (${advanced.map((g) => g.label.toLowerCase()).join(", ")})`}
               </button>
             )}
             {showAdvanced &&
@@ -414,8 +447,9 @@ export function StudioClient({
 
         <div className="sticky bottom-0 -mx-1 bg-bg/95 px-1 pb-2 pt-2 backdrop-blur lg:static lg:bg-transparent">
           {notice && (
-            <p className="mb-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800" data-testid="correction-notice">
-              Auto-corrected from your photo: {notice.map(describeCorrection).join("; ")}.
+            <p className="mb-2 flex gap-2 rounded-lg bg-navy-soft p-3 text-sm text-navy" data-testid="correction-notice">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>Auto-corrected from your photo: {notice.map(describeCorrection).join("; ")}.</span>
             </p>
           )}
           {error && (
@@ -423,12 +457,13 @@ export function StudioClient({
               {error.message}{" "}
               {error.topup && (
                 <Link href="/credits" className="font-medium underline">
-                  Buy credits →
+                  Buy credits <ArrowRight className="inline h-3.5 w-3.5 align-[-2px]" aria-hidden />
                 </Link>
               )}
             </p>
           )}
           <button className="btn-brand w-full py-3 text-base" disabled={!canGenerate} onClick={generate} data-testid="generate">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
             {submitting
               ? "Starting…"
               : !asset
@@ -457,25 +492,35 @@ export function StudioClient({
 
 function DetectionSummary({ detection, label }: { detection: Classification | null; label: string | null }) {
   if (!detection) {
-    return <p className="mt-2 text-xs text-ink-2">Couldn’t auto-detect the product — please choose the type below.</p>;
+    return (
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-2">
+        <CircleHelp className="h-3.5 w-3.5" aria-hidden />
+        Couldn’t auto-detect the product — please choose the type below.
+      </p>
+    );
   }
   const pct = Math.round(detection.confidence * 100);
   const sure = detection.confidence >= CORRECTION_CONFIDENCE;
+  const StatusIcon = sure && detection.category !== "other" ? CircleCheck : CircleHelp;
   return (
     <div className="mt-2 space-y-1 text-xs" data-testid="detection">
-      <p className={sure ? "text-ok" : "text-ink-2"}>
-        {detection.category === "other" ? (
-          <>Detected: not clothing or jewellery ({pct}%)</>
-        ) : (
-          <>
-            Detected: <b data-testid="detected-type">{label}</b> · {pct}% {sure ? "✓" : "— please confirm below"}
-          </>
-        )}
-        {detection.description && <span className="text-ink-2"> — {detection.description}</span>}
+      <p className={`flex items-start gap-1.5 ${sure ? "text-ok" : "text-ink-2"}`}>
+        <StatusIcon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span>
+          {detection.category === "other" ? (
+            <>Detected: not clothing or jewellery ({pct}%)</>
+          ) : (
+            <>
+              Detected: <b data-testid="detected-type">{label}</b> · {pct}%{sure ? "" : " — please confirm below"}
+            </>
+          )}
+          {detection.description && <span className="text-ink-2"> — {detection.description}</span>}
+        </span>
       </p>
       {detection.issues.map((i) => (
-        <p key={i} className="text-warn">
-          ⚠ {CLASSIFICATION_ISSUES[i]}
+        <p key={i} className="flex items-start gap-1.5 text-warn">
+          <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+          {CLASSIFICATION_ISSUES[i]}
         </p>
       ))}
     </div>
@@ -522,7 +567,13 @@ function Group({ group, value, onChange }: { group: OptionGroup; value: string; 
 function EmptyState() {
   return (
     <div className="relative isolate grid min-h-[460px] place-items-center overflow-hidden rounded-3xl border border-line p-8 text-center">
-      <BazaarScene className="absolute inset-0 -z-10 h-full w-full opacity-90" />
+      <Image
+        src={SITE_IMAGES.studioEmpty.src}
+        alt=""
+        fill
+        sizes="(min-width: 1024px) 60vw, 100vw"
+        className="-z-10 object-cover"
+      />
       <div className="max-w-sm rounded-2xl bg-surface/90 p-6 backdrop-blur">
         <p className="font-display text-3xl">
           Your catalogue shots <span className="italic text-brand">appear here</span>

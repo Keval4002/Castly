@@ -1,5 +1,6 @@
 "use client";
 
+import { CircleCheck, CircleX, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useCredits } from "@/components/CreditsProvider";
 import { apiFetch } from "@/lib/client/fetcher";
@@ -148,6 +149,11 @@ export function CreditsClient({
           className={`rounded-lg p-3 text-sm ${message.ok ? "bg-green-50 text-ok" : "bg-red-50 text-err"}`}
           data-testid="payment-message"
         >
+          {message.ok ? (
+            <CircleCheck className="mr-1.5 inline h-4 w-4 align-[-3px]" aria-hidden />
+          ) : (
+            <CircleX className="mr-1.5 inline h-4 w-4 align-[-3px]" aria-hidden />
+          )}
           {message.text}
         </p>
       )}
@@ -174,12 +180,14 @@ export function CreditsClient({
                 onClick={() => buy(p)}
                 data-testid={`buy-${p.id}`}
               >
+                {busy === p.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CreditCard className="h-4 w-4" aria-hidden />}
                 {busy === p.id ? "Processing…" : `Buy ${p.label}`}
               </button>
             </div>
           ))}
         </div>
         <p className="mt-3 text-xs text-ink-2">
+          <ShieldCheck className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-ok" aria-hidden />
           Secure payments by Razorpay — UPI, cards, netbanking & wallets. Prices include GST.
           {mock && <span className="ml-1 text-warn">(Test mode: payments are simulated.)</span>}
           {!paymentsEnabled && <span className="ml-1 text-err">Payments are not configured.</span>}
