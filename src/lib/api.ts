@@ -30,6 +30,12 @@ export function assertSameOrigin(req: Request) {
   if (!host || new URL(origin).host !== host) throw new HttpError(403, "Cross-origin request blocked", "forbidden");
 }
 
+/** The optional `Idempotency-Key` request header (UUID or similar), or undefined if absent/malformed. */
+export function idempotencyKeyFrom(req: Request): string | undefined {
+  const raw = req.headers.get("idempotency-key")?.trim();
+  return raw && /^[A-Za-z0-9._:-]{8,100}$/.test(raw) ? raw : undefined;
+}
+
 type Handler<C> = (req: Request, ctx: C) => Promise<Response>;
 
 export function api<C = unknown>(handler: Handler<C>): Handler<C> {
@@ -51,7 +57,7 @@ export function api<C = unknown>(handler: Handler<C>): Handler<C> {
       }
       if (err instanceof GenerationError) return jsonError(err.status, err.code, err.message);
       if (err instanceof PaymentError) return jsonError(err.status, "payment_error", err.message);
-      if (err instanceof UnsupportedImageError) return jsonError(415, "unsupported_image", err.message);
+      if (err instanceof UnsupportedImageError) return jsonError(415, err.code, err.message);
       console.error("[api] unhandled error", err);
       return jsonError(500, "internal_error", "Something went wrong. Please try again.");
     }

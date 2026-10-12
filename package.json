@@ -12,7 +12,10 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "test": "vitest run",
     "test:e2e": "next build && playwright test",
-    "smoke": "tsx --conditions=react-server scripts/smoke-providers.ts"
+    "smoke": "tsx --conditions=react-server scripts/smoke-providers.ts",
+    "eval": "tsx --conditions=react-server scripts/eval/run.ts",
+    "kill-switch": "tsx scripts/kill-switch.ts",
+    "db:verify": "tsx scripts/verify-migrations.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.78",
@@ -21,11 +24,14 @@
     "@ai-sdk/groq": "^4.0.59",
     "@ai-sdk/openai": "^4.0.91",
     "@ai-sdk/openai-compatible": "^3.0.67",
+    "@huggingface/transformers": "^4.3.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "ai": "^7.0.137",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.4",
+    "fflate": "^0.8.3",
+    "heic-convert": "^2.1.0",
     "jose": "^6.2.12",
     "lucide-react": "^1.55.0",
     "next": "16.4.0",
@@ -39,6 +45,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",
+    "@types/heic-convert": "^2.1.1",
     "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",

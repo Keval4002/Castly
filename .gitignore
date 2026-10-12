@@ -45,3 +45,6 @@ next-env.d.ts
 /test-results
 /playwright-report
 !.env.example
+
+# eval harness output (may contain generated images)
+/eval/runs/

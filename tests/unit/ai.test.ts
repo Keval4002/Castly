@@ -242,3 +242,49 @@ describe("product classifier via Vercel AI SDK", () => {
     expect(await classifyProduct(Buffer.from("jpeg"))).toBeNull();
   });
 });
+
+describe("Premium retry runs on a cheaper chain", () => {
+  const imgReq = () => ({
+    prompt: "Using the provided product photo…",
+    image: { data: readFileSync("tests/fixtures/product.jpg"), mime: "image/jpeg" },
+    aspectRatio: aspectRatio("9:16"),
+    variant: 0,
+  });
+
+  it("attempt 1 starts with OpenAI; the automatic retry uses the Studio chain and never calls OpenAI again", async () => {
+    setEnv({ IMAGE_PROVIDER_MODE: "live" });
+    const { providersFor, generateWithFallback } = await import("@/lib/image/router");
+    expect(providersFor("premium", 1).map((p) => p.id)[0]).toBe("openai");
+    expect(providersFor("premium", 2).map((p) => p.id)).not.toContain("openai");
+    expect(providersFor("premium", 2).map((p) => p.id)[0]).toBe("gemini");
+
+    calls.image.length = 0;
+    const out = await generateWithFallback("premium", { ...imgReq(), ctx: { attempt: 2 } });
+    expect(out.provider).toBe("gemini");
+    expect(calls.image.map((c) => c.id)).toEqual(["google"]);
+  });
+
+  it("other tiers keep their own chain on retry", async () => {
+    setEnv({ IMAGE_PROVIDER_MODE: "live" });
+    const { providersFor } = await import("@/lib/image/router");
+    expect(providersFor("standard", 2).map((p) => p.id)).toEqual(providersFor("standard", 1).map((p) => p.id));
+    expect(providersFor("economy", 2).map((p) => p.id)).toEqual(providersFor("economy", 1).map((p) => p.id));
+  });
+
+  it("the spend guard stops the chain before any provider is called", async () => {
+    setEnv({ IMAGE_PROVIDER_MODE: "live" });
+    const { generateWithFallback, BudgetStopError } = await import("@/lib/image/router");
+    calls.image.length = 0;
+    await expect(generateWithFallback("premium", imgReq(), { allow: () => false })).rejects.toBeInstanceOf(BudgetStopError);
+    expect(calls.image).toHaveLength(0);
+
+    // Allowed for the first vendor only: a failed first call can't fall through to a second paid one.
+    behaviour.openai = "fail";
+    const asked: string[] = [];
+    await expect(
+      generateWithFallback("premium", imgReq(), { allow: (id) => (asked.push(id), id === "openai") }),
+    ).rejects.toBeInstanceOf(BudgetStopError);
+    expect(asked).toEqual(["openai", "gemini"]);
+    expect(calls.image.map((c) => c.id)).toEqual(["openai"]);
+  });
+});

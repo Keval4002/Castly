@@ -1,22 +1,33 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { getOwnedAsset, saveAsset, signAssets } from "@/lib/assets";
-import { aspectRatio, CATEGORIES, resolveOptions, type CategoryId } from "@/lib/catalog/options";
+import { createHash } from "node:crypto";
+import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { getOwnedAsset, signAssets } from "@/lib/assets";
+import { CATEGORIES, CHILD_MODELS_ENABLED, isChildModelChoice, resolveOptions, type CategoryId } from "@/lib/catalog/options";
+import { optionsForLook } from "@/lib/catalog/simple";
 import { reconcileProduct, type Correction } from "@/lib/classify/reconcile";
 import type { CreateGenerationInput } from "@/lib/catalog/request";
-import { applyCreditMovement, moveCredits } from "@/lib/credits";
+import { applyCreditMovement, isUniqueViolation } from "@/lib/credits";
 import { db } from "@/lib/db";
-import { generationImages, generations, type Generation, type GenerationImage } from "@/lib/db/schema";
-import { finalizeOutput, llmPreview } from "@/lib/image/process";
-import { generateWithFallback, isTierAvailable } from "@/lib/image/router";
+import { generationImages, generations, products, type Generation, type GenerationImage } from "@/lib/db/schema";
 import { generationCost, TIERS, type TierId } from "@/lib/pricing";
-import { buildPromptPlan } from "@/lib/prompt/builder";
-import { sampleDirections } from "@/lib/prompt/shared";
-import { storage } from "@/lib/storage";
+import { generationPause } from "@/lib/switches";
+import type { Fidelity } from "@/lib/image/quality";
+import { isTierAvailable } from "@/lib/image/router";
+import {
+  finalizeGeneration,
+  recheckHeldImages,
+  reapStaleGenerations,
+  recoverGeneration,
+  runGeneration,
+  STALE_AFTER_MS,
+  HELD_MAX_MS,
+} from "./jobs";
 
+// The job engine lives in ./jobs; these re-exports keep the public surface of this module unchanged.
+export { finalizeGeneration, recheckHeldImages, reapStaleGenerations, recoverGeneration, runGeneration, STALE_AFTER_MS, HELD_MAX_MS };
 export const MAX_ACTIVE_GENERATIONS = 3;
-/** Jobs older than this that never finished are failed and refunded. */
-export const STALE_AFTER_MS = 10 * 60 * 1000;
+/** Repeat requests for the same job inside this window return the original job (double click, retry). */
+export const DEDUPE_WINDOW_MS = 15 * 1000;
 
 export class GenerationError extends Error {
   constructor(
@@ -28,7 +39,68 @@ export class GenerationError extends Error {
   }
 }
 
-export async function createGeneration(userId: string, input: CreateGenerationInput): Promise<Generation> {
+export interface CreateGenerationOpts {
+  /** The simple look picked in the Studio / bulk flow (stored for display and export). */
+  look?: string;
+  /** Bulk runs queue past the per-user active limit; they are processed a few at a time. */
+  skipActiveCheck?: boolean;
+  /** Client Idempotency-Key: a repeat with the same key returns the original job and never charges again. */
+  idempotencyKey?: string;
+}
+
+/** Stable keys for "this exact request": the client's own key, else a fingerprint bucketed by time. */
+function idempotencyKeys(userId: string, input: CreateGenerationInput, opts: CreateGenerationOpts): { write: string; read: string[] } {
+  if (opts.idempotencyKey) {
+    const k = `key:${opts.idempotencyKey}`;
+    return { write: k, read: [k] };
+  }
+  const options = Object.fromEntries(Object.entries(input.options ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify([
+        userId,
+        input.sourceAssetId,
+        input.category,
+        input.overrideDetection ?? false,
+        input.tier,
+        input.count,
+        input.aspectRatio,
+        input.productType ?? null,
+        input.customNote ?? null,
+        opts.look ?? null,
+        options,
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 32);
+  const bucket = Math.floor(Date.now() / DEDUPE_WINDOW_MS);
+  // Read the previous bucket too, so a double click straddling a boundary is still caught.
+  return { write: `auto:${fingerprint}:${bucket}`, read: [`auto:${fingerprint}:${bucket}`, `auto:${fingerprint}:${bucket - 1}`] };
+}
+
+async function findByKeys(userId: string, keys: string[]): Promise<Generation | undefined> {
+  const [row] = await db()
+    .select()
+    .from(generations)
+    .where(and(eq(generations.userId, userId), or(...keys.map((k) => eq(generations.idempotencyKey, k)))))
+    .orderBy(desc(generations.createdAt))
+    .limit(1);
+  return row;
+}
+
+export async function createGeneration(
+  userId: string,
+  input: CreateGenerationInput,
+  opts: CreateGenerationOpts = {},
+): Promise<Generation> {
+  const pause = await generationPause();
+  if (pause.paused) throw new GenerationError(pause.message, 503, "generation_paused");
+
+  // A double click or a retry after a timeout must not create (or charge for) a second job.
+  const keys = idempotencyKeys(userId, input, opts);
+  const existing = await findByKeys(userId, keys.read);
+  if (existing) return existing;
+
   const tier = input.tier as TierId;
   if (!isTierAvailable(tier)) {
     throw new GenerationError(`${TIERS[tier].label} is temporarily unavailable. Try another quality tier.`, 503, "tier_unavailable");
@@ -36,6 +108,15 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
 
   const source = await getOwnedAsset(userId, input.sourceAssetId);
   if (!source || source.kind !== "upload") throw new GenerationError("Product photo not found", 404, "asset_not_found");
+
+  // Generated child models are held back until a human-review flow exists (see CHILD_MODELS_ENABLED).
+  if (!CHILD_MODELS_ENABLED && Object.values(input.options).some(isChildModelChoice)) {
+    throw new GenerationError(
+      "Child models aren't available yet. Choose an adult model, or show the garment as a flat lay, on a hanger or on a ghost mannequin.",
+      422,
+      "child_models_unavailable",
+    );
+  }
 
   const d = db();
   const [{ active }] = await d
@@ -48,7 +129,7 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
         gte(generations.createdAt, new Date(Date.now() - STALE_AFTER_MS)),
       ),
     );
-  if (active >= MAX_ACTIVE_GENERATIONS) {
+  if (!opts.skipActiveCheck && active >= MAX_ACTIVE_GENERATIONS) {
     throw new GenerationError("You already have batches in progress. Please wait for them to finish.", 429, "too_many_active");
   }
 
@@ -70,14 +151,30 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
 
   const cost = generationCost(tier, input.count);
   // Options chosen for the wrong category don't apply — start from that category's first look.
-  const options = resolveOptions(category, categoryCorrected ? CATEGORIES[category].presets[0].values : input.options);
+  const options =
+    opts.look && categoryCorrected
+      ? optionsForLook(category, opts.look, null, product.productType)
+      : resolveOptions(
+          category,
+          categoryCorrected ? CATEGORIES[category].presets[0].values : input.options,
+          product.productType,
+        );
 
-  return d.transaction(async (tx) => {
+  const [owner] = await d
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.userId, userId), eq(products.sourceAssetId, source.id)));
+
+  return d
+    .transaction(async (tx) => {
     const [gen] = await tx
       .insert(generations)
       .values({
         userId,
+        idempotencyKey: keys.write,
         sourceAssetId: source.id,
+        productId: owner?.id,
+        look: opts.look,
         category,
         productType: product.productType,
         corrections: product.corrections,
@@ -101,168 +198,23 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
       ref: gen.id,
     });
     return gen;
-  });
-}
-
-async function recentPrompts(userId: string, category: string, excludeId: string): Promise<string[]> {
-  const rows = await db()
-    .select({ prompt: generationImages.prompt })
-    .from(generationImages)
-    .innerJoin(generations, eq(generations.id, generationImages.generationId))
-    .where(
-      and(
-        eq(generations.userId, userId),
-        eq(generations.category, category),
-        sql`${generations.id} <> ${excludeId}`,
-        eq(generationImages.status, "succeeded"),
-      ),
-    )
-    .orderBy(desc(generationImages.createdAt))
-    .limit(6);
-  return rows.map((r) => r.prompt).filter((p): p is string => Boolean(p));
-}
-
-/** Runs after the HTTP response is sent (via `after()`). Never throws. */
-export async function runGeneration(generationId: string): Promise<void> {
-  const d = db();
-  const started = Date.now();
-  const [claimed] = await d
-    .update(generations)
-    .set({ status: "running" })
-    .where(and(eq(generations.id, generationId), eq(generations.status, "queued")))
-    .returning();
-  if (!claimed) return; // already picked up or finished
-  const gen = claimed;
-
-  try {
-    const source = await getOwnedAsset(gen.userId, gen.sourceAssetId);
-    if (!source) throw new Error("Source asset missing");
-    const ar = aspectRatio(gen.aspectRatio);
-    const category = gen.category as CategoryId;
-
-    const [sourceData, recent] = await Promise.all([
-      storage().get(source.storageKey),
-      recentPrompts(gen.userId, gen.category, gen.id),
-    ]);
-    const plan = await buildPromptPlan({
-      category,
-      values: gen.options,
-      aspectRatio: ar,
-      count: gen.count,
-      customNote: gen.customNote ?? undefined,
-      productType: gen.productType,
-      detectedDescription: source.classification?.description,
-      preview: await llmPreview(sourceData),
-      recentPrompts: recent,
-      directions: sampleDirections(category, gen.count),
+  })
+    .catch(async (err) => {
+      // A concurrent identical request won the race: the whole transaction (and its debit) rolled back.
+      if (isUniqueViolation(err)) {
+        const winner = await findByKeys(userId, keys.read);
+        if (winner) return winner;
+      }
+      throw err;
     });
-
-    await d
-      .update(generations)
-      .set({ promptSource: plan.source, productSummary: plan.productSummary || null })
-      .where(eq(generations.id, gen.id));
-
-    await Promise.all(
-      plan.prompts.map(async (prompt, idx) => {
-        const t0 = Date.now();
-        await d
-          .update(generationImages)
-          .set({ prompt })
-          .where(and(eq(generationImages.generationId, gen.id), eq(generationImages.idx, idx)));
-        try {
-          const result = await generateWithFallback(gen.tier as TierId, {
-            prompt,
-            image: { data: sourceData, mime: source.mime },
-            aspectRatio: ar,
-            variant: idx,
-          });
-          const processed = await finalizeOutput(result.data, ar);
-          const asset = await saveAsset(gen.userId, "output", processed, `out/${gen.id}`);
-          await d
-            .update(generationImages)
-            .set({
-              status: "succeeded",
-              provider: result.provider,
-              model: result.model,
-              assetId: asset.id,
-              latencyMs: Date.now() - t0,
-            })
-            .where(and(eq(generationImages.generationId, gen.id), eq(generationImages.idx, idx)));
-        } catch (err) {
-          console.error(`[generation ${gen.id}] variant ${idx} failed:`, (err as Error).message);
-          await d
-            .update(generationImages)
-            .set({ status: "failed", error: "Generation failed", latencyMs: Date.now() - t0 })
-            .where(and(eq(generationImages.generationId, gen.id), eq(generationImages.idx, idx)));
-        }
-      }),
-    );
-  } catch (err) {
-    console.error(`[generation ${gen.id}] failed:`, err);
-    await d.update(generations).set({ error: "Something went wrong while generating" }).where(eq(generations.id, gen.id));
-  }
-  await finalizeGeneration(gen.id, Date.now() - started);
-}
-
-/**
- * Settle a generation: mark unfinished images failed, refund them once, and
- * set the final status. Idempotent.
- */
-export async function finalizeGeneration(generationId: string, latencyMs?: number): Promise<void> {
-  const d = db();
-  const [gen] = await d.select().from(generations).where(eq(generations.id, generationId));
-  if (!gen || ["succeeded", "partial", "failed"].includes(gen.status)) return;
-
-  await d
-    .update(generationImages)
-    .set({ status: "failed", error: sql`coalesce(${generationImages.error}, 'Timed out')` })
-    .where(and(eq(generationImages.generationId, gen.id), eq(generationImages.status, "pending")));
-
-  const images = await d.select().from(generationImages).where(eq(generationImages.generationId, gen.id));
-  const ok = images.filter((i) => i.status === "succeeded").length;
-  const failed = gen.count - ok;
-  const refund = failed * TIERS[gen.tier as TierId].creditsPerImage;
-
-  if (refund > 0) {
-    await moveCredits({
-      userId: gen.userId,
-      delta: refund,
-      reason: "refund",
-      idempotencyKey: `refund:${gen.id}`,
-      ref: gen.id,
-    });
-  }
-  await d
-    .update(generations)
-    .set({
-      status: ok === gen.count ? "succeeded" : ok > 0 ? "partial" : "failed",
-      refundedCredits: refund,
-      completedAt: new Date(),
-      latencyMs: latencyMs ?? null,
-      error: ok === 0 ? (gen.error ?? "All images failed to generate. Your credits have been refunded.") : gen.error,
-    })
-    .where(and(eq(generations.id, gen.id), inArray(generations.status, ["queued", "running"])));
-}
-
-/** Fail + refund jobs whose worker died (e.g. serverless timeout). */
-export async function reapStaleGenerations(userId: string) {
-  const stale = await db()
-    .select({ id: generations.id })
-    .from(generations)
-    .where(
-      and(
-        eq(generations.userId, userId),
-        inArray(generations.status, ["queued", "running"]),
-        lt(generations.createdAt, new Date(Date.now() - STALE_AFTER_MS)),
-      ),
-    );
-  for (const s of stale) await finalizeGeneration(s.id);
 }
 
 // ---------- read models ----------
 
 export interface GenerationDTO {
   id: string;
+  productId: string | null;
+  look: string | null;
   status: Generation["status"];
   category: CategoryId;
   productType: string | null;
@@ -287,7 +239,12 @@ export interface GenerationDTO {
     width: number | null;
     height: number | null;
     provider: string | null;
+    fidelity: Pick<Fidelity, "verified" | "passed" | "score"> | null;
+    /** Plain-words purpose of this shot, e.g. "Chest & collar close-up" (planner v1). */
+    purpose: string | null;
   }[];
+  /** Shots the planner left out and why, e.g. a back view without a back photo. */
+  skippedShots: { purpose: string; label: string; reason: string; needs?: string }[];
 }
 
 async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
@@ -297,13 +254,18 @@ async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
     .from(generationImages)
     .where(inArray(generationImages.generationId, gens.map((g) => g.id)))
     .orderBy(generationImages.idx);
-  const assetIds = [...gens.map((g) => g.sourceAssetId), ...images.map((i) => i.assetId).filter((x): x is string => !!x)];
+  const assetIds = [
+    ...gens.map((g) => g.sourceAssetId),
+    ...images.filter((i) => i.status === "succeeded").map((i) => i.assetId).filter((x): x is string => !!x),
+  ];
   const urls = await signAssets(assetIds);
 
   return gens.map((g) => {
     const src = urls.get(g.sourceAssetId);
     return {
       id: g.id,
+      productId: g.productId,
+      look: g.look,
       status: g.status,
       category: g.category as CategoryId,
       productType: g.productType,
@@ -316,6 +278,7 @@ async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
       costCredits: g.costCredits,
       refundedCredits: g.refundedCredits,
       productSummary: g.productSummary,
+      skippedShots: g.plan?.skipped ?? [],
       error: g.error,
       createdAt: g.createdAt.toISOString(),
       completedAt: g.completedAt?.toISOString() ?? null,
@@ -323,7 +286,7 @@ async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
       images: images
         .filter((i) => i.generationId === g.id)
         .map((i) => {
-          const a = i.assetId ? urls.get(i.assetId) : undefined;
+          const a = i.assetId && i.status === "succeeded" ? urls.get(i.assetId) : undefined;
           return {
             idx: i.idx,
             status: i.status,
@@ -332,6 +295,8 @@ async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
             width: a?.width ?? null,
             height: a?.height ?? null,
             provider: i.provider,
+            fidelity: i.fidelity ? { verified: i.fidelity.verified, passed: i.fidelity.passed, score: i.fidelity.score } : null,
+            purpose: i.spec?.purposeLabel ?? null,
           };
         }),
     };
@@ -344,21 +309,49 @@ export async function getGeneration(userId: string, id: string): Promise<Generat
     .from(generations)
     .where(and(eq(generations.id, id), eq(generations.userId, userId)));
   if (!gen) return null;
-  if (["queued", "running"].includes(gen.status) && Date.now() - gen.createdAt.getTime() > STALE_AFTER_MS) {
-    await finalizeGeneration(gen.id);
-    return getGeneration(userId, id);
+  let current = gen;
+  if (["queued", "running"].includes(gen.status)) {
+    // Until the scheduled sweep runs everywhere, a poll repairs its own job: dead shots restart, held images
+    // are re-checked, and anything past its deadline is failed and refunded.
+    await recoverGeneration(gen.id);
+    await recheckHeldImages(gen.id);
+    if (Date.now() - gen.createdAt.getTime() > STALE_AFTER_MS) await finalizeGeneration(gen.id);
+    [current] = await db().select().from(generations).where(eq(generations.id, id));
   }
-  const [dto] = await toDTOs([gen]);
+  const [dto] = await toDTOs([current]);
   return dto;
 }
 
-export async function listGenerations(userId: string, limit = 24, before?: Date): Promise<GenerationDTO[]> {
+export async function listGenerations(
+  userId: string,
+  limit = 24,
+  before?: Date,
+  productId?: string,
+): Promise<GenerationDTO[]> {
   await reapStaleGenerations(userId);
   const gens = await db()
     .select()
     .from(generations)
-    .where(and(eq(generations.userId, userId), before ? lt(generations.createdAt, before) : undefined))
+    .where(
+      and(
+        eq(generations.userId, userId),
+        before ? lt(generations.createdAt, before) : undefined,
+        productId ? eq(generations.productId, productId) : undefined,
+      ),
+    )
     .orderBy(desc(generations.createdAt))
     .limit(limit);
   return toDTOs(gens);
+}
+
+/**
+ * Run queued generations a few at a time (bulk). Never throws; each job is
+ * claimed atomically in `runGeneration`, so a duplicate call is harmless.
+ */
+export async function runQueue(ids: string[], concurrency = MAX_ACTIVE_GENERATIONS): Promise<void> {
+  const pending = [...ids];
+  const worker = async () => {
+    for (let id = pending.shift(); id; id = pending.shift()) await runGeneration(id);
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker));
 }

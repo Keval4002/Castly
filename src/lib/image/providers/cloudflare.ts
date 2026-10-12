@@ -22,10 +22,14 @@ export const cloudflareFlux: ImageProvider = {
   async generate(req: ImageRequest): Promise<ImageResult> {
     const e = env();
     const model = e.CLOUDFLARE_IMAGE_MODEL;
-    const reference = await sharp(req.image.data)
-      .resize({ width: 511, height: 511, fit: "inside" })
-      .jpeg({ quality: 90 })
-      .toBuffer();
+    // FLUX.2 klein rejects reference images of 512px or more. Prefer the pre-rendered `small` view
+    // (product fills the frame); otherwise downscale. Either way, enforce the limit defensively.
+    const source = req.image.small ?? req.image.data;
+    const meta = await sharp(source).metadata();
+    const reference =
+      req.image.small && Math.max(meta.width ?? 0, meta.height ?? 0) <= 511
+        ? req.image.small
+        : await sharp(source).resize({ width: 511, height: 511, fit: "inside" }).jpeg({ quality: 90 }).toBuffer();
 
     // Keep within the model's 1024px-class budget while matching the ratio.
     const scale = 1024 / Math.max(req.aspectRatio.width, req.aspectRatio.height);
@@ -37,6 +41,7 @@ export const cloudflareFlux: ImageProvider = {
     form.append("input_image_0", new Blob([new Uint8Array(reference)], { type: "image/jpeg" }), "product.jpg");
     form.append("width", String(width));
     form.append("height", String(height));
+    if (req.seed !== undefined) form.append("seed", String(req.seed));
 
     const res = await fetchWithTimeout(
       `https://api.cloudflare.com/client/v4/accounts/${e.CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`,

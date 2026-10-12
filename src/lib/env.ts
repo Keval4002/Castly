@@ -36,14 +36,54 @@ const schema = z.object({
   // other configured LLM, then a deterministic template.
   PROMPT_LLM: z.enum(["gemini", "groq", "claude", "template"]).default("gemini"),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_PROMPT_MODEL: z.string().default("gemini-2.5-flash-lite"),
+  GEMINI_PROMPT_MODEL: z.string().default("gemini-3.5-flash-lite"),
+  /** Stricter vision model for the product-fidelity judge ("" = use the prompt model). */
+  GEMINI_JUDGE_MODEL: z.string().default("gemini-3.5-flash"),
   GROQ_API_KEY: z.string().optional(),
-  GROQ_PROMPT_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
+  GROQ_PROMPT_MODEL: z.string().default("qwen/qwen3.8-27b"),
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_PROMPT_MODEL: z.string().default("claude-haiku-5-5"),
 
   /** Product-photo classifier: auto = first configured vision LLM, mock = offline heuristic, off = disabled. */
   CLASSIFIER_MODE: z.enum(["auto", "mock", "off"]).default("auto"),
+
+  /**
+   * Product-photo cleaning right after upload (background removal with BiRefNet).
+   * auto: fal when FAL_KEY is set, else the local model (not on Vercel), else basic trim/pad.
+   * fal: hosted BiRefNet (fast; production). local: transformers.js on this server's CPU
+   * (free; dev / self-hosted). off: basic trim/pad only.
+   */
+  BACKGROUND_REMOVAL: z.enum(["auto", "fal", "local", "off"]).default("auto"),
+  LOCAL_MODEL_DIR: z.string().default(".data/models"),
+
+  /**
+   * Product-fidelity check on every generated image (vision LLM compares it to the product).
+   * enforce: regenerate when the product changed, refund if it still differs.
+   * flag: keep the best attempt and record the score. off: no check.
+   */
+  FIDELITY_MODE: z.enum(["enforce", "flag", "off"]).default("enforce"),
+  FIDELITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.8),
+  /** Emergency stop: true pauses all paid image generation (needs a restart; scripts/kill-switch.ts is instant). */
+  GENERATION_PAUSED: bool,
+  /**
+   * How a generation's shots are started. http = each shot runs in its own function invocation (production);
+   * inline = shots run inside the job's own invocation (local dev and tests). Default: http in production, else inline.
+   */
+  SHOT_DISPATCH: z.enum(["http", "inline"]).optional(),
+  /** Where operational alerts are POSTed as JSON ({text, content}); alerts are always logged either way. */
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  /**
+   * Shot planner. v1 = every shot gets its own structured spec, product reference view and prompt (see src/lib/shots);
+   * off = the legacy single-reference flow. Default: v1 outside production, off in production until you flip it
+   * (roll out, run the eval set, compare, keep `off` as the instant rollback).
+   */
+  SHOT_PLANNER: z.enum(["v1", "off"]).optional(),
+  /** Bearer token for /api/cron/sweep (Vercel Cron sends it automatically when CRON_SECRET is set). */
+  CRON_SECRET: z.string().min(16).optional(),
+  /** Pause before re-asking the fidelity judge when it errored. */
+  FIDELITY_JUDGE_RETRY_DELAY_MS: z.coerce.number().int().min(0).max(30_000).default(1500),
+  /** Image attempts per variant, including fidelity retries. */
+  GENERATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(3).default(2),
 
   // Image providers
   /**
@@ -52,7 +92,7 @@ const schema = z.object({
    * mock: offline compositor (dev / e2e only)
    */
   IMAGE_PROVIDER_MODE: z.enum(["live", "free", "mock"]).default("live"),
-  GEMINI_IMAGE_MODEL: z.string().default("gemini-2.5-flash-image"),
+  GEMINI_IMAGE_MODEL: z.string().default("gemini-3.1-flash-image"),
   FAL_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),

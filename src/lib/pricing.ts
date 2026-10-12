@@ -35,7 +35,7 @@ export const TIERS: Record<TierId, Tier> = {
     id: "premium",
     label: "Premium HD",
     tagline: "Highest detail for hero shots, ads and website banners.",
-    creditsPerImage: 8,
+    creditsPerImage: 10,
     eta: "~40s",
   },
 };

@@ -48,7 +48,21 @@ export default defineConfig({
       PROMPT_LLM: "template",
       RAZORPAY_WEBHOOK_SECRET: "whsec_e2e",
       MOCK_IMAGE_DELAY_MS: "800",
+      // No vision judge offline: pass every image, otherwise the fail-closed gate would hold them all.
+      MOCK_FIDELITY: JSON.stringify({
+        reference_features: ["body"],
+        checks: [{ feature: "body", status: "match" }],
+        product_prominence: "hero",
+        same_product: true,
+        score: 0.95,
+        differences: [],
+      }),
       ALLOW_INSECURE_DEV_MODE: "true",
+      CRON_SECRET: "e2e-cron-secret-e2e-cron-secret",
+      // The ~300 MB local matting model is irrelevant here (and exhausts memory); basic cleaning is used.
+      BACKGROUND_REMOVAL: "off",
+      // Production defaults the planner to off; the e2e run exercises the new per-shot flow.
+      SHOT_PLANNER: "v1",
     },
   },
 });

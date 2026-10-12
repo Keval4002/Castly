@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/studio", "/library", "/credits"];
+const PROTECTED = ["/workspace", "/onboarding", "/studio", "/library", "/credits"];
 const DEV_COOKIE = "dukaanshot_dev_session";
 
 /**
@@ -42,10 +42,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
   if (pathname === "/login" && signedIn) {
-    const studio = request.nextUrl.clone();
-    studio.pathname = "/studio";
-    studio.search = "";
-    return NextResponse.redirect(studio);
+    const home = request.nextUrl.clone();
+    home.pathname = "/workspace";
+    home.search = "";
+    return NextResponse.redirect(home);
   }
   return response;
 }

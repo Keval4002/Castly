@@ -13,6 +13,8 @@ export interface Choice {
   label: string;
   /** Fragment fed to the prompt LLM / template. Empty = no constraint. */
   prompt: string;
+  /** Shot types only: mandatory framing that makes the product the hero of the frame. */
+  framing?: string;
 }
 
 export interface OptionGroup {
@@ -41,6 +43,8 @@ export interface ProductType {
   noun: string;
   /** Body area for on-model shots (jewellery), so the model wears it correctly. */
   wornOn?: string;
+  /** Display prop that suits this piece (jewellery), e.g. "ring cone holder". */
+  display?: string;
 }
 
 export interface Category {
@@ -104,6 +108,14 @@ const OCCASION: OptionGroup = {
 
 const ON_MODEL_CLOTHING = ["on_model_full", "on_model_half", "on_model_detail"];
 
+/**
+ * Generated child models need a human review step before delivery (policy: held, never
+ * auto-delivered). Until that flow exists they are off: not offered, and rejected by the server.
+ */
+export const CHILD_MODELS_ENABLED = false;
+export const CHILD_MODEL_IDS = ["girl", "boy"];
+export const isChildModelChoice = (v: unknown) => typeof v === "string" && CHILD_MODEL_IDS.includes(v);
+
 const clothing: Category = {
   id: "clothing",
   label: "Clothing",
@@ -129,12 +141,12 @@ const clothing: Category = {
       label: "Shot type",
       default: "on_model_full",
       choices: [
-        { id: "on_model_full", label: "Model · full body", prompt: "worn by a model, full-body shot showing the entire garment head to toe" },
-        { id: "on_model_half", label: "Model · waist up", prompt: "worn by a model, waist-up shot focusing on the garment's upper half" },
-        { id: "on_model_detail", label: "Model · close-up", prompt: "worn by a model, close-up crop highlighting fabric texture, print and stitching" },
-        { id: "ghost_mannequin", label: "Ghost mannequin", prompt: "invisible ghost-mannequin e-commerce shot, garment shaped as if worn with no visible person" },
-        { id: "flat_lay", label: "Flat lay", prompt: "neatly styled flat lay photographed from directly above" },
-        { id: "hanger", label: "On hanger", prompt: "hanging on an elegant wooden hanger against a wall" },
+        { id: "on_model_full", label: "Model · full body", prompt: "worn by a model, full-body shot showing the entire garment head to toe", framing: "the garment is the hero — model centred, the full outfit filling about 80% of the frame height, sharpest focus on the garment, background kept simple and secondary" },
+        { id: "on_model_half", label: "Model · waist up", prompt: "worn by a model, waist-up shot focusing on the garment's upper half", framing: "framed from mid-thigh to just above the head with the garment centred and filling most of the frame, sharpest focus on the garment" },
+        { id: "on_model_detail", label: "Model · close-up", prompt: "worn by a model, close-up crop highlighting fabric texture, print and stitching", framing: "tight crop where the garment fills the entire frame; face out of frame or barely visible; fabric, print and stitching in razor-sharp focus" },
+        { id: "ghost_mannequin", label: "Ghost mannequin", prompt: "invisible ghost-mannequin e-commerce shot, garment shaped as if worn with no visible person", framing: "garment centred on a plain background, filling about 80% of the frame, every edge visible" },
+        { id: "flat_lay", label: "Flat lay", prompt: "neatly styled flat lay photographed from directly above", framing: "garment centred and filling about 70% of the frame, fully visible with even margins, minimal props kept at the edges" },
+        { id: "hanger", label: "On hanger", prompt: "hanging on an elegant wooden hanger against a wall", framing: "garment centred and filling most of the frame height, fully visible, background softly out of focus" },
       ],
     },
     {
@@ -145,8 +157,12 @@ const clothing: Category = {
       choices: [
         { id: "woman", label: "Woman", prompt: "female model" },
         { id: "man", label: "Man", prompt: "male model" },
-        { id: "girl", label: "Girl (kid)", prompt: "young girl child model, age-appropriate natural styling" },
-        { id: "boy", label: "Boy (kid)", prompt: "young boy child model, age-appropriate natural styling" },
+        ...(CHILD_MODELS_ENABLED
+          ? [
+              { id: "girl", label: "Girl (kid)", prompt: "young girl child model, age-appropriate natural styling" },
+              { id: "boy", label: "Boy (kid)", prompt: "young boy child model, age-appropriate natural styling" },
+            ]
+          : []),
       ],
     },
     {
@@ -269,16 +285,22 @@ const jewellery: Category = {
   description: "Necklaces, earrings, rings, bangles, bridal sets",
   icon: "gem",
   productTypes: [
-    { id: "necklace", label: "Necklace", noun: "necklace", wornOn: "around the neck" },
-    { id: "pendant", label: "Pendant / chain", noun: "pendant on a chain", wornOn: "around the neck" },
-    { id: "earrings", label: "Earrings", noun: "pair of earrings", wornOn: "on both ears, hair tucked back" },
-    { id: "ring", label: "Ring", noun: "ring", wornOn: "on a finger" },
-    { id: "bangles", label: "Bangles / bracelet", noun: "bangle or bracelet", wornOn: "on the wrist" },
-    { id: "jewellery_set", label: "Necklace + earrings set", noun: "matching necklace and earrings set", wornOn: "necklace around the neck and earrings on both ears" },
-    { id: "maang_tikka", label: "Maang tikka", noun: "maang tikka", wornOn: "on the forehead hair parting" },
-    { id: "nose_ring", label: "Nose ring / pin", noun: "nose ring", wornOn: "on the nose" },
-    { id: "anklet", label: "Anklet", noun: "anklet", wornOn: "on the ankle" },
-    { id: "watch", label: "Watch", noun: "wristwatch", wornOn: "on the wrist" },
+    { id: "necklace", label: "Necklace", noun: "necklace", wornOn: "around the neck", display: "jewellery neck bust" },
+    { id: "pendant", label: "Pendant / chain", noun: "pendant on a chain", wornOn: "around the neck", display: "jewellery neck bust" },
+    { id: "earrings", label: "Earrings", noun: "pair of earrings", wornOn: "on both ears, hair tucked back", display: "earring display stand" },
+    { id: "ring", label: "Ring", noun: "ring", wornOn: "on a finger", display: "ring cone holder" },
+    { id: "bangles", label: "Bangles / bracelet", noun: "bangle or bracelet", wornOn: "on the wrist", display: "bangle display stand" },
+    {
+      id: "jewellery_set",
+      label: "Necklace + earrings set",
+      noun: "matching necklace and earrings set",
+      wornOn: "necklace around the neck and earrings on both ears",
+      display: "jewellery bust with the earrings displayed beside it",
+    },
+    { id: "maang_tikka", label: "Maang tikka", noun: "maang tikka", wornOn: "on the forehead hair parting", display: "display head form" },
+    { id: "nose_ring", label: "Nose ring / pin", noun: "nose ring", wornOn: "on the nose", display: "small velvet display pad" },
+    { id: "anklet", label: "Anklet", noun: "anklet", wornOn: "on the ankle", display: "low display stand" },
+    { id: "watch", label: "Watch", noun: "wristwatch", wornOn: "on the wrist", display: "watch display pillow" },
     { id: "other_jewellery", label: "Other jewellery", noun: "jewellery piece" },
   ],
   groups: [
@@ -287,13 +309,13 @@ const jewellery: Category = {
       label: "Shot type",
       default: "display_stand",
       choices: [
-        { id: "display_stand", label: "Display / bust", prompt: "displayed on an elegant jewellery bust or stand" },
-        { id: "surface", label: "On a surface", prompt: "artfully placed on a styled surface" },
-        { id: "floating", label: "Hero macro", prompt: "hero macro product shot, piece floating/suspended with crisp focus on every detail" },
-        { id: "box", label: "In gift box", prompt: "presented in an open luxury jewellery box" },
-        { id: "on_model_closeup", label: "Model · close-up", prompt: "worn by a model, tight close-up crop on where the piece is worn (neck, ear or wrist)" },
-        { id: "on_model_portrait", label: "Model · portrait", prompt: "worn by a model, elegant shoulders-up beauty portrait" },
-        { id: "hand_model", label: "Hand model", prompt: "worn on a graceful hand / wrist with neat manicure" },
+        { id: "display_stand", label: "Display / bust", prompt: "displayed on an elegant {display}", framing: "the piece centred and filling about 60% of the frame, tack-sharp on every detail, stand and backdrop secondary" },
+        { id: "surface", label: "On a surface", prompt: "artfully placed on a styled surface", framing: "the piece centred and filling about 50–60% of the frame, tack-sharp; any props small and at the edges" },
+        { id: "floating", label: "Hero macro", prompt: "hero macro product shot, piece floating/suspended with crisp focus on every detail", framing: "the piece centred and filling about 70% of the frame, every detail in razor-sharp focus" },
+        { id: "box", label: "In gift box", prompt: "presented in an open luxury jewellery box", framing: "the open box centred with the piece filling most of it and about half of the frame, piece in sharpest focus" },
+        { id: "on_model_closeup", label: "Model · close-up", prompt: "worn by a model, tight close-up crop on where the piece is worn", framing: "macro crop on the body area where it is worn so the piece sits in the centre and fills about half of the frame; face cropped out or partly out of frame; the piece is the sharpest point" },
+        { id: "on_model_portrait", label: "Model · portrait", prompt: "worn by a model, elegant shoulders-up beauty portrait", framing: "framed from just below the collarbones to the top of the head with the piece centred and prominent — it must be the first thing the eye sees and the sharpest point, never hidden by hair or clothing" },
+        { id: "hand_model", label: "Hand model", prompt: "worn on a graceful hand / wrist with neat manicure", framing: "hand and piece centred, the piece filling about 40% of the frame and in sharpest focus, background softly blurred" },
       ],
     },
     {
@@ -322,6 +344,16 @@ const jewellery: Category = {
         { id: "mirror", label: "Mirror", prompt: "reflective mirror surface with subtle reflection" },
         { id: "pastel", label: "Pastel seamless", prompt: "soft pastel seamless backdrop" },
         { id: "petals", label: "Flowers", prompt: "scattered rose petals and fresh flowers" },
+      ],
+    },
+    {
+      id: "model_gender",
+      label: "Model",
+      default: "woman",
+      showIf: { group: "presentation", in: ON_MODEL_JEWELLERY },
+      choices: [
+        { id: "woman", label: "Woman", prompt: "female model" },
+        { id: "man", label: "Man", prompt: "male model" },
       ],
     },
     {
@@ -408,13 +440,18 @@ export function defaultValues(category: CategoryId): Record<string, string> {
  * Normalise user-submitted option values: unknown groups dropped, invalid
  * choices replaced with defaults, hidden groups removed.
  */
-export function resolveOptions(category: CategoryId, input: Record<string, unknown>): Record<string, string> {
+export function resolveOptions(
+  category: CategoryId,
+  input: Record<string, unknown>,
+  productTypeId?: string | null,
+): Record<string, string> {
   const cat = CATEGORIES[category];
-  const values: Record<string, string> = {};
+  let values: Record<string, string> = {};
   for (const g of cat.groups) {
     const v = input[g.id];
     values[g.id] = typeof v === "string" && g.choices.some((c) => c.id === v) ? v : g.default;
   }
+  values = enforceCompatibility(category, productTypeId, values).values;
   for (const g of cat.groups) {
     if (!isGroupVisible(g, values)) delete values[g.id];
   }
@@ -422,16 +459,154 @@ export function resolveOptions(category: CategoryId, input: Record<string, unkno
 }
 
 /** Ordered list of {label, fragment} for the visible, non-empty selections. */
-export function describeSelections(category: CategoryId, values: Record<string, string>) {
+export function describeSelections(category: CategoryId, values: Record<string, string>, productTypeId?: string | null) {
+  const display = productType(category, productTypeId)?.display ?? "jewellery display stand";
   const out: { group: string; label: string; choice: string; prompt: string }[] = [];
   for (const g of CATEGORIES[category].groups) {
     const v = values[g.id];
     if (!v) continue;
     const c = g.choices.find((x) => x.id === v);
     if (!c || !c.prompt) continue;
-    out.push({ group: g.id, label: g.label, choice: c.label, prompt: c.prompt });
+    out.push({ group: g.id, label: g.label, choice: c.label, prompt: c.prompt.replace("{display}", display) });
   }
   return out;
+}
+
+// ---------- compatibility rules ----------
+
+/**
+ * Combinations that can't produce a good catalogue photo. The Studio disables
+ * blocked choices (showing the reason) and the server applies the same
+ * fallbacks, so a request can never ask for e.g. a ring in a shoulders-up portrait.
+ */
+export interface CompatibilityRule {
+  group: string;
+  block: string[];
+  reason: string;
+  /** Replacement choice; per product type where it differs. */
+  fallback: string | Record<string, string>;
+  /** Applies to these product types (any when omitted). */
+  productTypes?: string[];
+  /** Applies only while another group has one of these values. */
+  when?: { group: string; in: string[] };
+}
+
+const NOT_ON_HAND = ["necklace", "pendant", "earrings", "jewellery_set", "maang_tikka", "nose_ring", "anklet"];
+const NOT_IN_PORTRAIT = ["ring", "bangles", "watch", "anklet"];
+
+export const COMPATIBILITY: Record<CategoryId, CompatibilityRule[]> = {
+  clothing: [
+    CHILD_MODELS_ENABLED
+      ? {
+          group: "model_gender",
+          block: ["woman", "man"],
+          productTypes: ["kidswear"],
+          fallback: "girl",
+          reason: "Kidswear is shown on a child model",
+        }
+      : {
+          // No child models yet, and an adult model would misrepresent size and fit.
+          group: "presentation",
+          block: ON_MODEL_CLOTHING,
+          productTypes: ["kidswear"],
+          fallback: "flat_lay",
+          reason: "Kidswear can’t be shown on a model yet — showing it as a flat lay",
+        },
+    {
+      group: "presentation",
+      block: ["on_model_half"],
+      productTypes: ["bottoms"],
+      fallback: "on_model_full",
+      reason: "A waist-up shot would hide bottom wear",
+    },
+    {
+      group: "presentation",
+      block: ["ghost_mannequin"],
+      productTypes: ["saree"],
+      fallback: "flat_lay",
+      reason: "An unstitched saree can’t hold a ghost-mannequin shape",
+    },
+    {
+      group: "occasion",
+      block: OCCASION.choices.map((c) => c.id).filter((id) => id !== "none"),
+      when: { group: "setting", in: ["studio_white"] },
+      fallback: "none",
+      reason: "Marketplace white stays plain white — pick another setting for a festive theme",
+    },
+  ],
+  jewellery: [
+    {
+      group: "presentation",
+      block: ["hand_model"],
+      productTypes: NOT_ON_HAND,
+      fallback: "on_model_closeup",
+      reason: "This piece isn’t worn on the hand",
+    },
+    {
+      group: "presentation",
+      block: ["on_model_portrait"],
+      productTypes: NOT_IN_PORTRAIT,
+      fallback: { ring: "hand_model", bangles: "hand_model", watch: "hand_model", anklet: "on_model_closeup" },
+      reason: "A shoulders-up portrait wouldn’t show this piece",
+    },
+  ],
+};
+
+function ruleApplies(rule: CompatibilityRule, productTypeId: string | null | undefined, values: Record<string, string>) {
+  if (rule.productTypes && !(productTypeId && rule.productTypes.includes(productTypeId))) return false;
+  if (rule.when && !rule.when.in.includes(values[rule.when.group])) return false;
+  return true;
+}
+
+/** Why a choice can't be used with the current product and selections, or null. */
+export function blockedReason(
+  category: CategoryId,
+  productTypeId: string | null | undefined,
+  values: Record<string, string>,
+  group: string,
+  choice: string,
+): string | null {
+  for (const rule of COMPATIBILITY[category]) {
+    if (rule.group === group && rule.block.includes(choice) && ruleApplies(rule, productTypeId, values)) return rule.reason;
+  }
+  return null;
+}
+
+export interface Adjustment {
+  group: string;
+  from: string;
+  to: string;
+  reason: string;
+}
+
+/** Replace blocked selections with their fallbacks (idempotent). */
+export function enforceCompatibility(
+  category: CategoryId,
+  productTypeId: string | null | undefined,
+  input: Record<string, string>,
+): { values: Record<string, string>; adjustments: Adjustment[] } {
+  const values = { ...input };
+  const adjustments: Adjustment[] = [];
+  // A fix can switch other rules on or off, so settle in a few passes.
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (const rule of COMPATIBILITY[category]) {
+      const current = values[rule.group];
+      if (!current || !rule.block.includes(current) || !ruleApplies(rule, productTypeId, values)) continue;
+      const to =
+        typeof rule.fallback === "string" ? rule.fallback : (rule.fallback[productTypeId ?? ""] ?? Object.values(rule.fallback)[0]);
+      values[rule.group] = to;
+      adjustments.push({ group: rule.group, from: current, to, reason: rule.reason });
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  return { values, adjustments };
+}
+
+/** Mandatory hero framing for the selected shot type. */
+export function framingFor(category: CategoryId, values: Record<string, string>): string | undefined {
+  return CATEGORIES[category].groups.find((g) => g.id === "presentation")?.choices.find((c) => c.id === values.presentation)?.framing;
 }
 
 export function productType(category: CategoryId, id: string | null | undefined): ProductType | undefined {

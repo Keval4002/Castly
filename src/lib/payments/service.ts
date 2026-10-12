@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, gte, ne } from "drizzle-orm";
 import { applyCreditMovement, isUniqueViolation } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { payments } from "@/lib/db/schema";
@@ -16,9 +16,38 @@ export class PaymentError extends Error {
   }
 }
 
+/** An unpaid order for the same pack is reused for this long. */
+export const OPEN_ORDER_REUSE_MS = 30 * 60 * 1000;
+
 export async function createCheckout(user: { id: string; email: string }, packId: string) {
   const pack = findPack(packId);
   if (!pack) throw new PaymentError("Unknown credit pack", 400);
+
+  // Idempotent: a double click (or a retry) reuses the unpaid order for this pack instead of opening a second one.
+  const [open] = await db()
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.userId, user.id),
+        eq(payments.packId, pack.id),
+        eq(payments.status, "created"),
+        gte(payments.createdAt, new Date(Date.now() - OPEN_ORDER_REUSE_MS)),
+      ),
+    )
+    .orderBy(desc(payments.createdAt))
+    .limit(1);
+  if (open) {
+    return {
+      orderId: open.razorpayOrderId,
+      amount: open.amountPaise,
+      currency: open.currency,
+      keyId: env().RAZORPAY_KEY_ID ?? "",
+      mock: env().PAYMENTS_MOCK,
+      pack,
+      prefill: { email: user.email },
+    };
+  }
 
   const order = await createRazorpayOrder(pack.amountPaise, `cst_${Date.now().toString(36)}`, {
     user_id: user.id,

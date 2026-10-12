@@ -1,6 +1,6 @@
 "use client";
 
-import { Images, LogOut, Wallet, Wand2 } from "lucide-react";
+import { Images, LayoutGrid, LogOut, Wallet, Wand2 } from "lucide-react";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import { CreditsBadge } from "./CreditsProvider";
 import { Logo } from "./Logo";
 
 const NAV = [
+  { href: "/workspace", label: "Workspace", icon: LayoutGrid },
   { href: "/studio", label: "Studio", icon: Wand2 },
   { href: "/library", label: "Library", icon: Images },
   { href: "/credits", label: "Credits", icon: Wallet },
@@ -24,7 +25,7 @@ export function AppHeader({ email }: { email: string }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4">
-        <Logo href="/studio" />
+        <Logo href="/workspace" />
         <nav className="ml-2 hidden items-center gap-1 sm:flex">
           {NAV.map((n) => (
             <Link

@@ -1,34 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
-import {
-  ArrowRight,
-  Check,
-  ChevronDown,
-  CircleCheck,
-  CircleHelp,
-  ImagePlus,
-  Info,
-  Loader2,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CircleCheck, CircleHelp, ImagePlus, Info, Loader2, Pencil, Sparkles, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { SITE_IMAGES } from "@/lib/site-images";
 import { useCredits } from "@/components/CreditsProvider";
 import { GenerationCard } from "@/components/GenerationCard";
-import {
-  ASPECT_RATIOS,
-  CATEGORIES,
-  CATEGORY_LIST,
-  defaultValues,
-  isGroupVisible,
-  type AspectRatioId,
-  type CategoryId,
-  type OptionGroup,
-} from "@/lib/catalog/options";
+import { CATEGORIES, CATEGORY_LIST, type CategoryId } from "@/lib/catalog/options";
+import { BACKDROPS, DEFAULT_COUNT, LOOKS, SIZES, type LookId, type Size } from "@/lib/catalog/simple";
 import {
   CLASSIFICATION_ISSUES,
   CORRECTION_CONFIDENCE,
@@ -39,90 +20,102 @@ import {
 import { ApiError, apiFetch, compressImage } from "@/lib/client/fetcher";
 import { isActive, type GenerationDTO } from "@/lib/client/types";
 import { useGenerationPolling } from "@/lib/client/usePolling";
-import { DEFAULT_TIER, generationCost, MAX_VARIANTS, TIER_ORDER, TIERS, type TierId } from "@/lib/pricing";
+import { DEFAULT_TIER, generationCost } from "@/lib/pricing";
 
-interface UploadedAsset {
+export interface UploadedAsset {
   id: string;
   thumbUrl: string;
   url: string;
   width: number;
   height: number;
   classification: Classification | null;
+  preparation: { status: "pending" | "ready" | "failed" | "none"; method?: string | null };
+  clean: { url: string; thumbUrl: string } | null;
 }
 
+const COST = generationCost(DEFAULT_TIER, DEFAULT_COUNT);
+
 export function StudioClient({
-  tierAvailability,
+  initialAsset,
+  initialCategory,
+  initialProductType,
+  defaultLook,
+  defaultSize,
   initial,
 }: {
-  tierAvailability: Record<TierId, boolean>;
+  initialAsset: UploadedAsset | null;
+  initialCategory: CategoryId;
+  initialProductType: string | null;
+  defaultLook: LookId;
+  defaultSize: Size["id"];
   initial: GenerationDTO[];
 }) {
   const { credits, setCredits } = useCredits();
-  const [asset, setAsset] = useState<UploadedAsset | null>(null);
+  const [asset, setAsset] = useState<UploadedAsset | null>(initialAsset);
   const [uploading, setUploading] = useState(false);
-  const [category, setCategory] = useState<CategoryId>("clothing");
-  const [values, setValues] = useState<Record<string, string>>(() => ({
-    ...defaultValues("clothing"),
-    ...CATEGORIES.clothing.presets[0].values,
-  }));
-  const [presetId, setPresetId] = useState<string | null>(CATEGORIES.clothing.presets[0].id);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [ratio, setRatio] = useState<AspectRatioId>("1:1");
-  const firstAvailable = TIER_ORDER.find((t) => tierAvailability[t]) ?? DEFAULT_TIER;
-  const [tier, setTier] = useState<TierId>(tierAvailability[DEFAULT_TIER] ? DEFAULT_TIER : firstAvailable);
-  const [count, setCount] = useState(2);
-  const [note, setNote] = useState("");
+  const [category, setCategory] = useState<CategoryId>(initialCategory);
+  const [productTypeId, setProductTypeId] = useState<string | null>(initialProductType);
+  const [override, setOverride] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [look, setLook] = useState<LookId>(defaultLook);
+  const [backdrop, setBackdrop] = useState<string | null>(null);
+  const [size, setSize] = useState<Size["id"]>(defaultSize);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; topup?: boolean } | null>(null);
-  const [productTypeId, setProductTypeId] = useState<string | null>(null);
-  const [override, setOverride] = useState(false);
   const [notice, setNotice] = useState<Correction[] | null>(null);
   const [gens, setGens] = useState<GenerationDTO[]>(initial);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useGenerationPolling(gens, setGens);
 
-  const cat = CATEGORIES[category];
-  const visibleGroups = cat.groups.filter((g) => isGroupVisible(g, values));
-  const basic = visibleGroups.filter((g) => !g.advanced);
-  const advanced = visibleGroups.filter((g) => g.advanced);
-  const cost = generationCost(tier, count);
-  const activeCount = gens.filter(isActive).length;
+  // The photo is cleaned in the background while the seller picks a look.
+  const preparing = asset?.preparation.status === "pending";
+  useEffect(() => {
+    if (!asset || !preparing) return;
+    let stop = false;
+    const started = Date.now();
+    const tick = async () => {
+      if (stop || Date.now() - started > 120_000) return;
+      try {
+        const res = await apiFetch<{ asset: UploadedAsset }>(`/api/uploads/${asset.id}`);
+        if (stop) return;
+        if (res.asset.preparation.status !== "pending") {
+          setAsset((a) => (a && a.id === res.asset.id ? { ...a, preparation: res.asset.preparation, clean: res.asset.clean } : a));
+          return;
+        }
+      } catch {
+        // transient — keep polling
+      }
+      setTimeout(tick, 1500);
+    };
+    const timer = setTimeout(tick, 1200);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [asset?.id, preparing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const canGenerate = Boolean(asset) && !uploading && !submitting && tierAvailability[tier];
+  const cat = CATEGORIES[category];
+  const looks = LOOKS[category];
+  const backdrops = BACKDROPS[category].items;
+  const activeLook = looks.find((l) => l.id === look) ?? looks[0];
+  const selectedBackdrop = backdrops.some((b) => b.id === backdrop) ? backdrop : activeLook.backdrop;
+  const activeCount = gens.filter(isActive).length;
+  const canGenerate = Boolean(asset) && !uploading && !submitting;
 
   const detection = asset?.classification ?? null;
   const confident = Boolean(detection && detection.confidence >= CORRECTION_CONFIDENCE);
-  const detectedLabel =
-    detection && detection.category !== "other"
-      ? CATEGORIES[detection.category].productTypes.find((t) => t.id === detection.productType)?.label ??
-        CATEGORIES[detection.category].label
-      : null;
+  const typeLabel = cat.productTypes.find((t) => t.id === productTypeId)?.label ?? null;
+  const unsupported = confident && detection!.category === "other";
   const mismatch =
     confident &&
     detection!.category !== "other" &&
     (detection!.category !== category || (productTypeId !== null && productTypeId !== detection!.productType));
-  const unsupported = confident && detection!.category === "other";
 
   function pickCategory(id: CategoryId) {
     setCategory(id);
-    // Keep the detected type when switching back to the detected category.
     setProductTypeId(detection && detection.category === id ? detection.productType : null);
-    const preset = CATEGORIES[id].presets[0];
-    setValues({ ...defaultValues(id), ...preset.values });
-    setPresetId(preset.id);
-  }
-
-  function applyPreset(id: string) {
-    const preset = cat.presets.find((p) => p.id === id);
-    if (!preset) return;
-    setValues({ ...defaultValues(category), ...preset.values });
-    setPresetId(id);
-  }
-
-  function setOption(group: string, choice: string) {
-    setValues((v) => ({ ...v, [group]: choice }));
-    setPresetId(null);
+    setBackdrop(null);
   }
 
   async function onFile(file: File | undefined) {
@@ -132,19 +125,18 @@ export function StudioClient({
     try {
       const blob = await compressImage(file);
       const form = new FormData();
-      form.append("file", blob, "product.jpg");
-      const { asset } = await apiFetch<{ asset: UploadedAsset }>("/api/uploads", { method: "POST", body: form });
-      setAsset(asset);
+      form.append("file", blob, file.name || "product.jpg");
+      const res = await apiFetch<{ asset: UploadedAsset }>("/api/uploads", { method: "POST", body: form });
+      setAsset(res.asset);
       setOverride(false);
       setNotice(null);
+      setEditing(false);
       // Auto-select what the classifier saw so the seller doesn't have to.
-      const c = asset.classification;
+      const c = res.asset.classification;
       if (c && c.category !== "other" && c.confidence >= CORRECTION_CONFIDENCE) {
         if (c.category !== category) {
           setCategory(c.category);
-          const preset = CATEGORIES[c.category].presets[0];
-          setValues({ ...defaultValues(c.category), ...preset.values });
-          setPresetId(preset.id);
+          setBackdrop(null);
         }
         setProductTypeId(c.productType);
       } else {
@@ -158,17 +150,7 @@ export function StudioClient({
     }
   }
 
-  async function submit(body: {
-    sourceAssetId: string;
-    category: string;
-    options: Record<string, string>;
-    aspectRatio: string;
-    tier: string;
-    count: number;
-    customNote?: string;
-    productType?: string | null;
-    overrideDetection?: boolean;
-  }) {
+  async function submit(body: Record<string, unknown>) {
     setError(null);
     setNotice(null);
     setSubmitting(true);
@@ -179,14 +161,12 @@ export function StudioClient({
       });
       setGens((g) => [res.generation, ...g]);
       if (res.generation.corrections.length) {
-        // Reflect the server's correction in the controls for the next batch.
+        // Reflect the server's correction for the next run.
         const g = res.generation;
         setNotice(g.corrections);
         if (g.category !== category) {
           setCategory(g.category);
-          const preset = CATEGORIES[g.category].presets[0];
-          setValues({ ...defaultValues(g.category), ...preset.values });
-          setPresetId(preset.id);
+          setBackdrop(null);
         }
         setProductTypeId(g.productType);
       }
@@ -205,13 +185,11 @@ export function StudioClient({
     void submit({
       sourceAssetId: asset.id,
       category,
-      options: values,
-      aspectRatio: ratio,
-      tier,
-      count,
-      customNote: note.trim() || undefined,
       productType: productTypeId,
       overrideDetection: override || undefined,
+      look,
+      backdrop: selectedBackdrop,
+      aspectRatio: size,
     });
   }
 
@@ -220,20 +198,17 @@ export function StudioClient({
     void submit({
       sourceAssetId: g.source.id,
       category: g.category,
-      options: g.options,
-      aspectRatio: g.aspectRatio,
-      tier: g.tier,
-      count: g.count,
-      customNote: g.customNote ?? undefined,
       productType: g.productType,
+      look: g.look ?? "marketplace",
+      aspectRatio: SIZES.some((s) => s.id === g.aspectRatio) ? g.aspectRatio : "1:1",
     });
   }
 
   return (
-    <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-      {/* ---------- Controls ---------- */}
-      <section className="min-w-0 space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pb-4 lg:pr-2">
-        <Step n={1} title="Product photo">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+      <section className="min-w-0 space-y-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto lg:pb-4 lg:pr-2">
+        {/* ---- Photo ---- */}
+        <div>
           <input
             ref={fileInput}
             type="file"
@@ -256,194 +231,167 @@ export function StudioClient({
           >
             {asset ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={asset.thumbUrl} alt="Your product" className="h-20 w-20 rounded-xl object-cover" data-testid="upload-preview" />
+              <img
+                src={asset.clean?.thumbUrl ?? asset.thumbUrl}
+                alt="Your product"
+                className="h-24 w-24 rounded-xl border border-line bg-white object-contain"
+                data-testid="upload-preview"
+              />
             ) : (
-              <div className={`grid h-20 w-20 place-items-center rounded-xl bg-surface-2 text-ink-2 ${uploading ? "shimmer" : ""}`}>
-                {uploading ? (
-                  <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
-                ) : (
-                  <ImagePlus className="h-7 w-7" strokeWidth={1.5} aria-hidden />
-                )}
+              <div className={`grid h-24 w-24 place-items-center rounded-xl bg-surface-2 text-ink-2 ${uploading ? "shimmer" : ""}`}>
+                {uploading ? <Loader2 className="h-6 w-6 animate-spin" aria-hidden /> : <ImagePlus className="h-7 w-7" strokeWidth={1.5} aria-hidden />}
               </div>
             )}
             <div className="text-sm">
-              <p className="font-medium">{uploading ? "Uploading…" : asset ? "Change photo" : "Upload a product photo"}</p>
-              <p className="text-ink-2">Clear, well-lit photo of one product. JPG/PNG, any phone photo works.</p>
+              <p className="font-medium">{uploading ? "Uploading…" : asset ? "Change photo" : "Upload your product photo"}</p>
+              <p className="text-ink-2">One product, any phone photo works.</p>
             </div>
           </div>
-          {asset && <DetectionSummary detection={detection} label={detectedLabel} />}
-        </Step>
+          {asset && <PreparationStatus prep={asset.preparation} />}
 
-        <Step n={2} title="What are you selling?">
-          <div className="grid grid-cols-2 gap-2">
-            {CATEGORY_LIST.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => pickCategory(c.id)}
-                data-active={category === c.id}
-                data-testid={`category-${c.id}`}
-                className="card p-3 text-left transition data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
-              >
-                <span className="grid h-9 w-9 place-items-center rounded-lg bg-surface-2 text-navy">
-                  <CategoryIcon icon={c.icon} className="h-5 w-5" />
-                </span>
-                <p className="mt-1 font-medium">{c.label}</p>
-                <p className="text-xs text-ink-2">{c.description}</p>
-              </button>
-            ))}
-          </div>
-          <div className="mt-3" role="radiogroup" aria-label="Product type">
-            <span className="label">Product type</span>
-            <div className="flex flex-wrap gap-2">
-              {cat.productTypes.map((t) => (
-                <button
-                  key={t.id}
-                  role="radio"
-                  aria-checked={productTypeId === t.id}
-                  className="chip"
-                  data-active={productTypeId === t.id}
-                  data-testid={`type-${t.id}`}
-                  onClick={() => setProductTypeId(productTypeId === t.id ? null : t.id)}
-                >
-                  {t.label}
-                  {detection?.productType === t.id && detection.category === category && (
-                    <Check className="ml-1 inline h-3.5 w-3.5 align-[-2px]" aria-label="detected" />
+          {asset && (
+            <div className="mt-3 rounded-xl bg-surface-2 p-3 text-sm" data-testid="detection">
+              <div className="flex items-center gap-2">
+                <CategoryIcon icon={cat.icon} className="h-4 w-4 text-navy" />
+                <p className="flex-1">
+                  {detection || typeLabel ? (
+                    <>
+                      This is <b data-testid="detected-type">{typeLabel ?? cat.label}</b>
+                    </>
+                  ) : (
+                    "What is this?"
                   )}
+                </p>
+                <button className="inline-flex items-center gap-1 text-xs font-medium text-brand" onClick={() => setEditing((e) => !e)}>
+                  <Pencil className="h-3 w-3" aria-hidden /> {editing ? "Done" : "Not right?"}
                 </button>
+              </div>
+              {detection?.issues.map((i) => (
+                <p key={i} className="mt-2 flex items-start gap-1.5 text-xs text-warn">
+                  <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                  {CLASSIFICATION_ISSUES[i]}
+                </p>
               ))}
-            </div>
-          </div>
-          {(mismatch || unsupported) && (
-            <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-warn" data-testid="detection-mismatch">
-              {unsupported ? (
-                <p className="flex gap-2">
-                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  <span>
-                  This photo doesn’t look like clothing or jewellery
-                  {detection!.description ? ` (we see: ${detection!.description})` : ""}. Results may be poor.
-                  </span>
-                </p>
-              ) : (
-                <p className="flex gap-2">
-                  <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  <span>
-                  This photo looks like <b>{detectedLabel}</b> ({CATEGORIES[detection!.category as CategoryId].label}).{" "}
-                  {override ? "We’ll use your selection." : `We’ll generate it as ${detectedLabel} for accurate results.`}
-                  </span>
-                </p>
+              {(editing || !detection || !confident) && (
+                <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {CATEGORY_LIST.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => pickCategory(c.id)}
+                        data-active={category === c.id}
+                        data-testid={`category-${c.id}`}
+                        className="card flex items-center gap-2 p-2 text-sm transition data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
+                      >
+                        <CategoryIcon icon={c.icon} className="h-4 w-4" /> {c.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Product type">
+                    {cat.productTypes.map((t) => (
+                      <button
+                        key={t.id}
+                        role="radio"
+                        aria-checked={productTypeId === t.id}
+                        className="chip"
+                        data-active={productTypeId === t.id}
+                        data-testid={`type-${t.id}`}
+                        onClick={() => setProductTypeId(productTypeId === t.id ? null : t.id)}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-              <label className="mt-2 flex items-center gap-2 text-ink">
-                <input
-                  type="checkbox"
-                  checked={override}
-                  onChange={(e) => setOverride(e.target.checked)}
-                  data-testid="override-detection"
-                />
-                {unsupported ? "Generate anyway" : "I’m sure — use my selection"}
-              </label>
+              {(mismatch || unsupported) && (
+                <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-warn" data-testid="detection-mismatch">
+                  <p className="flex gap-2">
+                    <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    <span>
+                      {unsupported
+                        ? `This doesn’t look like clothing or jewellery${detection!.description ? ` (we see: ${detection!.description})` : ""}.`
+                        : `This photo looks like ${detection!.description || "a different product"}. We’ll use what we see for accurate results.`}
+                    </span>
+                  </p>
+                  <label className="mt-2 flex items-center gap-2 text-ink">
+                    <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} data-testid="override-detection" />
+                    {unsupported ? "Generate anyway" : "I’m sure — use my choice"}
+                  </label>
+                </div>
+              )}
             </div>
           )}
-        </Step>
+        </div>
 
-        <Step n={3} title="Pick a look">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {cat.presets.map((p) => (
+        {/* ---- Look ---- */}
+        <div>
+          <h2 className="mb-2 font-ui text-sm font-semibold tracking-normal">Pick a look</h2>
+          <div className="grid gap-2" role="radiogroup" aria-label="Look">
+            {looks.map((l) => (
               <button
-                key={p.id}
-                onClick={() => applyPreset(p.id)}
-                data-active={presetId === p.id}
-                className="card min-w-[150px] p-3 text-left text-sm transition data-[active=true]:border-brand data-[active=true]:bg-brand-soft"
+                key={l.id}
+                role="radio"
+                aria-checked={look === l.id}
+                data-active={look === l.id}
+                data-testid={`look-${l.id}`}
+                onClick={() => {
+                  setLook(l.id);
+                  setBackdrop(null);
+                }}
+                className="card p-3 text-left transition data-[active=true]:border-brand data-[active=true]:bg-brand-soft"
               >
-                <p className="font-medium">{p.label}</p>
-                <p className="mt-0.5 text-xs text-ink-2">{p.description}</p>
+                <p className="font-medium">{l.label}</p>
+                <p className="text-xs text-ink-2">{l.description}</p>
               </button>
             ))}
           </div>
-          <div className="mt-4 space-y-4">
-            {basic.map((g) => (
-              <Group key={g.id} group={g} value={values[g.id]} onChange={(v) => setOption(g.id, v)} />
-            ))}
-            {advanced.length > 0 && (
-              <button
-                className="inline-flex items-center gap-1 font-ui text-sm font-medium text-brand"
-                onClick={() => setShowAdvanced((s) => !s)}
-                aria-expanded={showAdvanced}
-              >
-                <ChevronDown className={`h-4 w-4 transition ${showAdvanced ? "rotate-180" : ""}`} aria-hidden />
-                {showAdvanced ? "Fewer options" : `More options (${advanced.map((g) => g.label.toLowerCase()).join(", ")})`}
-              </button>
-            )}
-            {showAdvanced &&
-              advanced.map((g) => <Group key={g.id} group={g} value={values[g.id]} onChange={(v) => setOption(g.id, v)} />)}
-            <div>
-              <label className="label" htmlFor="note">
-                Extra direction <span className="font-normal normal-case text-ink-3">(optional)</span>
-              </label>
-              <textarea
-                id="note"
-                className="input min-h-[64px] resize-y"
-                maxLength={300}
-                placeholder="e.g. model with long wavy hair, holding a coffee cup"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-            </div>
-          </div>
-        </Step>
+        </div>
 
-        <Step n={4} title="Output">
-          <label className="label">Format</label>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-3">
-            {ASPECT_RATIOS.map((a) => (
+        {/* ---- Backdrop ---- */}
+        <div>
+          <h2 className="mb-2 font-ui text-sm font-semibold tracking-normal">Backdrop</h2>
+          <div className="grid grid-cols-6 gap-2" role="radiogroup" aria-label="Backdrop">
+            {backdrops.map((b) => (
               <button
-                key={a.id}
-                onClick={() => setRatio(a.id)}
-                data-active={ratio === a.id}
-                className="card flex flex-col items-center gap-1 p-2 text-center transition data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
+                key={b.id}
+                role="radio"
+                aria-checked={selectedBackdrop === b.id}
+                aria-label={b.label}
+                title={b.label}
+                data-active={selectedBackdrop === b.id}
+                onClick={() => setBackdrop(b.id)}
+                className="group flex flex-col items-center gap-1"
               >
                 <span
-                  className="block rounded-sm border border-ink-3 bg-surface-2"
-                  style={{ width: a.width >= a.height ? 28 : (28 * a.width) / a.height, height: a.height >= a.width ? 28 : (28 * a.height) / a.width }}
+                  className="block h-10 w-10 rounded-full border border-line ring-offset-2 group-data-[active=true]:ring-2 group-data-[active=true]:ring-brand"
+                  style={{ background: b.swatch }}
                 />
-                <span className="text-xs font-medium">{a.id}</span>
-                <span className="text-[10px] leading-tight text-ink-2">{a.useCase}</span>
+                <span className="text-[10px] text-ink-2">{b.label}</span>
               </button>
             ))}
           </div>
+        </div>
 
-          <label className="label mt-4">Variations</label>
-          <div className="flex gap-2">
-            {Array.from({ length: MAX_VARIANTS }, (_, i) => i + 1).map((n) => (
-              <button key={n} className="chip w-12" data-active={count === n} onClick={() => setCount(n)} data-testid={`count-${n}`}>
-                {n}
-              </button>
-            ))}
-          </div>
-
-          <label className="label mt-4">Quality</label>
-          <div className="space-y-2">
-            {TIER_ORDER.map((t) => (
+        {/* ---- Size ---- */}
+        <div>
+          <h2 className="mb-2 font-ui text-sm font-semibold tracking-normal">Size</h2>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Size">
+            {SIZES.map((s) => (
               <button
-                key={t}
-                disabled={!tierAvailability[t]}
-                onClick={() => setTier(t)}
-                data-active={tier === t}
-                data-testid={`tier-${t}`}
-                className="card flex w-full items-center gap-3 p-3 text-left transition disabled:opacity-40 data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
+                key={s.id}
+                role="radio"
+                aria-checked={size === s.id}
+                data-active={size === s.id}
+                onClick={() => setSize(s.id)}
+                className="card p-2 text-center transition data-[active=true]:border-ink data-[active=true]:ring-1 data-[active=true]:ring-ink"
               >
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    {TIERS[t].label} <span className="font-normal text-ink-3">· {TIERS[t].eta}</span>
-                  </p>
-                  <p className="text-xs text-ink-2">{tierAvailability[t] ? TIERS[t].tagline : "Unavailable right now"}</p>
-                </div>
-                <span className="whitespace-nowrap text-sm font-semibold">
-                  {TIERS[t].creditsPerImage} cr<span className="font-normal text-ink-2">/img</span>
-                </span>
+                <span className="block text-sm font-medium">{s.label}</span>
+                <span className="block text-[10px] leading-tight text-ink-2">{s.use}</span>
               </button>
             ))}
           </div>
-        </Step>
+        </div>
 
         <div className="sticky bottom-0 -mx-1 bg-bg/95 px-1 pb-2 pt-2 backdrop-blur lg:static lg:bg-transparent">
           {notice && (
@@ -464,102 +412,23 @@ export function StudioClient({
           )}
           <button className="btn-brand w-full py-3 text-base" disabled={!canGenerate} onClick={generate} data-testid="generate">
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-            {submitting
-              ? "Starting…"
-              : !asset
-                ? "Upload a photo to start"
-                : `Generate ${count} image${count > 1 ? "s" : ""} · ${cost} credit${cost > 1 ? "s" : ""}`}
+            {submitting ? "Starting…" : !asset ? "Upload a photo to start" : `Generate · ${COST} credits`}
           </button>
           <p className="mt-2 text-center text-xs text-ink-2">
-            Balance: {credits} credits{credits < cost && asset ? " — " : ""}
-            {credits < cost && asset && (
+            Balance: {credits} credits{credits < COST && asset ? " — " : ""}
+            {credits < COST && asset && (
               <Link href="/credits" className="font-medium text-brand underline">
                 top up
               </Link>
             )}
-            {activeCount > 0 && ` · ${activeCount} batch${activeCount > 1 ? "es" : ""} in progress`}
+            {activeCount > 0 && ` · ${activeCount} in progress`}
           </p>
         </div>
       </section>
 
-      {/* ---------- Results ---------- */}
-      <section id="results" className="min-w-0 space-y-4 scroll-mt-20">
+      <section id="results" className="min-w-0 scroll-mt-20 space-y-4">
         {gens.length === 0 ? <EmptyState /> : gens.map((g) => <GenerationCard key={g.id} gen={g} onRerun={rerun} />)}
       </section>
-    </div>
-  );
-}
-
-function DetectionSummary({ detection, label }: { detection: Classification | null; label: string | null }) {
-  if (!detection) {
-    return (
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-2">
-        <CircleHelp className="h-3.5 w-3.5" aria-hidden />
-        Couldn’t auto-detect the product — please choose the type below.
-      </p>
-    );
-  }
-  const pct = Math.round(detection.confidence * 100);
-  const sure = detection.confidence >= CORRECTION_CONFIDENCE;
-  const StatusIcon = sure && detection.category !== "other" ? CircleCheck : CircleHelp;
-  return (
-    <div className="mt-2 space-y-1 text-xs" data-testid="detection">
-      <p className={`flex items-start gap-1.5 ${sure ? "text-ok" : "text-ink-2"}`}>
-        <StatusIcon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span>
-          {detection.category === "other" ? (
-            <>Detected: not clothing or jewellery ({pct}%)</>
-          ) : (
-            <>
-              Detected: <b data-testid="detected-type">{label}</b> · {pct}%{sure ? "" : " — please confirm below"}
-            </>
-          )}
-          {detection.description && <span className="text-ink-2"> — {detection.description}</span>}
-        </span>
-      </p>
-      {detection.issues.map((i) => (
-        <p key={i} className="flex items-start gap-1.5 text-warn">
-          <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-          {CLASSIFICATION_ISSUES[i]}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h2 className="mb-3 flex items-center gap-2 font-ui text-sm font-semibold tracking-normal">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-navy font-ui text-xs text-white">{n}</span>
-        {title}
-      </h2>
-      {children}
-    </div>
-  );
-}
-
-function Group({ group, value, onChange }: { group: OptionGroup; value: string; onChange: (v: string) => void }) {
-  const id = useMemo(() => `g-${group.id}`, [group.id]);
-  return (
-    <div role="radiogroup" aria-labelledby={id}>
-      <span id={id} className="label">
-        {group.label}
-      </span>
-      <div className="flex flex-wrap gap-2">
-        {group.choices.map((c) => (
-          <button
-            key={c.id}
-            role="radio"
-            aria-checked={value === c.id}
-            className="chip"
-            data-active={value === c.id}
-            onClick={() => onChange(c.id)}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -567,22 +436,39 @@ function Group({ group, value, onChange }: { group: OptionGroup; value: string; 
 function EmptyState() {
   return (
     <div className="relative isolate grid min-h-[460px] place-items-center overflow-hidden rounded-3xl border border-line p-8 text-center">
-      <Image
-        src={SITE_IMAGES.studioEmpty.src}
-        alt=""
-        fill
-        sizes="(min-width: 1024px) 60vw, 100vw"
-        className="-z-10 object-cover"
-      />
+      <Image src={SITE_IMAGES.studioEmpty.src} alt="" fill sizes="(min-width: 1024px) 60vw, 100vw" className="-z-10 object-cover" />
       <div className="max-w-sm rounded-2xl bg-surface/90 p-6 backdrop-blur">
         <p className="font-display text-3xl">
-          Your catalogue shots <span className="italic text-brand">appear here</span>
+          Your shots <span className="italic text-brand">appear here</span>
         </p>
-        <p className="mt-2 text-sm text-ink-2">
-          Upload one product photo, pick a look and hit generate. Each run creates fresh, unique variations — ready for
-          WhatsApp, Instagram and your store.
-        </p>
+        <p className="mt-2 text-sm text-ink-2">Upload a photo, pick a look and tap Generate. Ready for WhatsApp, Instagram and your store.</p>
       </div>
     </div>
+  );
+}
+
+function PreparationStatus({ prep }: { prep: UploadedAsset["preparation"] }) {
+  if (prep.status === "none") return null;
+  if (prep.status === "pending") {
+    return (
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-2" data-testid="prep-status" data-status="pending">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        Cleaning your photo — pick a look meanwhile
+      </p>
+    );
+  }
+  if (prep.status === "failed") {
+    return (
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-2" data-testid="prep-status" data-status="failed">
+        <Info className="h-3.5 w-3.5" aria-hidden />
+        Using your original photo as-is
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2 flex items-center gap-1.5 text-xs text-ok" data-testid="prep-status" data-status="ready">
+      <CircleCheck className="h-3.5 w-3.5" aria-hidden />
+      Photo cleaned · product left untouched
+    </p>
   );
 }

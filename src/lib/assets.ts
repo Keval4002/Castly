@@ -4,6 +4,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { assets, type Asset } from "@/lib/db/schema";
 import type { ProcessedImage } from "@/lib/image/process";
+import type { Preparation } from "@/lib/image/quality";
+import { preparationState } from "@/lib/image/reference";
 import { storage } from "@/lib/storage";
 
 export async function saveAsset(
@@ -11,6 +13,7 @@ export async function saveAsset(
   kind: "upload" | "output",
   img: ProcessedImage,
   folder: string,
+  extra: Pick<Partial<Asset>, "preparation"> = {},
 ): Promise<Asset> {
   const id = randomUUID();
   const base = `u/${userId}/${folder}/${id}`;
@@ -32,6 +35,7 @@ export async function saveAsset(
       width: img.width,
       height: img.height,
       bytes: img.data.length,
+      ...extra,
     })
     .returning();
   return row;
@@ -64,4 +68,28 @@ export async function signAssets(ids: string[]): Promise<Map<string, AssetUrls>>
     out.set(r.id, { url: urls[i * 2], thumbUrl: urls[i * 2 + 1], width: r.width, height: r.height });
   });
   return out;
+}
+
+export interface UploadDTO extends AssetUrls {
+  id: string;
+  classification: Asset["classification"];
+  preparation: { status: Preparation["status"] | "none"; method: Preparation["method"] | null };
+  /** The cleaned product photo once ready. */
+  clean: { url: string; thumbUrl: string } | null;
+}
+
+export async function uploadDTO(asset: Asset): Promise<UploadDTO> {
+  const status = preparationState(asset);
+  const cleanReady = status === "ready" && asset.cleanKey && asset.cleanThumbKey;
+  const [urls, clean] = await Promise.all([
+    signAssets([asset.id]).then((m) => m.get(asset.id)!),
+    cleanReady ? storage().signedUrls([asset.cleanKey!, asset.cleanThumbKey!]) : null,
+  ]);
+  return {
+    id: asset.id,
+    ...urls,
+    classification: asset.classification,
+    preparation: { status, method: asset.preparation?.method ?? null },
+    clean: clean ? { url: clean[0], thumbUrl: clean[1] } : null,
+  };
 }

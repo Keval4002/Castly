@@ -4,8 +4,10 @@ import { aspectRatio, CATEGORIES, describeSelections, isOnModel, resolveOptions 
 import { createGenerationSchema } from "@/lib/catalog/request";
 import { signWebhookBody, verifyCheckoutSignature, verifyWebhookSignature } from "@/lib/payments/razorpay";
 import { CREDIT_PACKS, findPack, generationCost, TIERS } from "@/lib/pricing";
-import { coercePlan, sampleDirections, templatePrompts, type PromptRequest } from "@/lib/prompt/shared";
+import { coercePlan, sampleCastings, sampleDirections, templatePrompts, type PromptRequest } from "@/lib/prompt/shared";
 import { createHmac } from "node:crypto";
+import sharp from "sharp";
+import { MIN_UPLOAD_SIDE, normalizeUpload } from "@/lib/image/process";
 
 describe("pricing", () => {
   it("charges per image by tier", () => {
@@ -95,7 +97,8 @@ describe("prompt plan", () => {
   it("coercePlan pads short LLM output and rejects garbage", () => {
     const plan = coercePlan({ product_summary: "Gold necklace", prompts: ["x".repeat(40)] }, req, "gemini");
     expect(plan?.prompts).toHaveLength(3);
-    expect(plan?.prompts[0]).toBe("x".repeat(40));
+    // The LLM dropped the mandatory framing, so it is added back.
+    expect(plan?.prompts[0]).toMatch(new RegExp(`^x{40} Framing: the piece centred`));
     expect(coercePlan({ nope: true }, req, "gemini")).toBeNull();
     expect(coercePlan({ product_summary: "", prompts: ["short"] }, req, "gemini")).toBeNull();
   });
@@ -119,9 +122,83 @@ describe("razorpay signatures", () => {
 describe("safeNextPath", () => {
   it("only allows relative paths", () => {
     expect(safeNextPath("/library")).toBe("/library");
-    expect(safeNextPath("//evil.com")).toBe("/studio");
-    expect(safeNextPath("https://evil.com")).toBe("/studio");
-    expect(safeNextPath("/\\evil.com")).toBe("/studio");
-    expect(safeNextPath(null)).toBe("/studio");
+    expect(safeNextPath("//evil.com")).toBe("/workspace");
+    expect(safeNextPath("https://evil.com")).toBe("/workspace");
+    expect(safeNextPath("/\\evil.com")).toBe("/workspace");
+    expect(safeNextPath(null)).toBe("/workspace");
+  });
+});
+
+describe("upload normalisation", () => {
+  const png = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: "#c9a227" } }).png().toBuffer();
+
+  it("upscales small web images instead of rejecting them", async () => {
+    const out = await normalizeUpload(await png(225, 225));
+    expect(out.width).toBe(1024);
+    expect(out.height).toBe(1024);
+  });
+  it("keeps the aspect ratio and caps large images", async () => {
+    const out = await normalizeUpload(await png(4000, 2000));
+    expect([out.width, out.height]).toEqual([2048, 1024]);
+  });
+  it("rejects images too small to see the product", async () => {
+    await expect(normalizeUpload(await png(MIN_UPLOAD_SIDE - 1, 100))).rejects.toThrow(/too small/);
+  });
+});
+
+describe("model casting", () => {
+  const base = { category: "clothing" as const, values: { presentation: "on_model_full", model_gender: "woman", model_look: "south_asian" }, productType: "saree", recentPrompts: [] as string[] };
+
+  it("casts a visibly different person for every variant", () => {
+    for (let run = 0; run < 20; run++) {
+      const castings = sampleCastings({ ...base, count: 4 });
+      expect(castings).toHaveLength(4);
+      const traits = castings.map((c) => c.split(", "));
+      // No two variants share a face, complexion, hair or expression.
+      for (let t = 0; t < 4; t++) expect(new Set(traits.map((x) => x[t])).size).toBe(4);
+    }
+  });
+  it("avoids looks used in the seller's recent prompts", () => {
+    const first = sampleCastings({ ...base, count: 2 });
+    const next = sampleCastings({ ...base, count: 2, recentPrompts: [first.join(" ")] });
+    for (const c of next) for (const trait of c.split(", ")) expect(first.join(" ")).not.toContain(trait);
+  });
+  it("keeps ears and neckline clear for earrings and respects men / kids / hand shots", () => {
+    const earrings = sampleCastings({ category: "jewellery", values: { presentation: "on_model_portrait", model_look: "south_asian" }, productType: "earrings", recentPrompts: [], count: 3 });
+    for (const c of earrings) expect(c).toMatch(/bun|ponytail|tucked behind the ears|top knot/);
+    const man = sampleCastings({ ...base, values: { ...base.values, model_gender: "man" }, count: 2 });
+    for (const c of man) expect(c).toMatch(/shaven|stubble|beard/);
+    const kid = sampleCastings({ ...base, values: { ...base.values, model_gender: "girl" }, count: 2 });
+    for (const c of kid) expect(c).not.toMatch(/makeup|bold lip|beard|stubble|shaven|jaw|cheekbones/);
+    const hand = sampleCastings({ category: "jewellery", values: { presentation: "hand_model" }, productType: "ring", recentPrompts: [], count: 2 });
+    for (const c of hand) expect(c).toMatch(/nails|manicure/);
+  });
+  it("casts nobody for product-only shots", () => {
+    expect(sampleCastings({ ...base, values: { presentation: "flat_lay" }, count: 3 })).toEqual([]);
+  });
+  it("puts each casting into its template prompt", () => {
+    const castings = sampleCastings({ ...base, count: 2 });
+    const req: PromptRequest = { ...base, aspectRatio: aspectRatio("4:5"), count: 2, directions: sampleDirections("clothing", 2), castings };
+    const prompts = templatePrompts(req);
+    prompts.forEach((p, i) => expect(p).toContain(castings[i]));
+  });
+});
+
+describe("test database guard", async () => {
+  const { assertTestDatabase, databaseName } = await import("./db-guard");
+
+  it("only accepts databases whose name contains 'test'", () => {
+    expect(() => assertTestDatabase("postgres://u:p@localhost:5432/dukaanshot_test")).not.toThrow();
+    expect(() => assertTestDatabase("postgres://u:p@localhost:5432/dukaanshot_test_agent")).not.toThrow();
+    expect(() => assertTestDatabase("postgres://u:p@h:6543/Test_DB?sslmode=require")).not.toThrow();
+    expect(() => assertTestDatabase("postgres://u:p@aws-0.pooler.supabase.com:6543/postgres")).toThrow(/Refusing to run tests/);
+    expect(() => assertTestDatabase("postgres://u:p@localhost:5432/dukaanshot")).toThrow(/Refusing/);
+    expect(() => assertTestDatabase("not a url")).toThrow(/unparseable/);
+  });
+
+  it("is not fooled by 'test' in the host, user or password", () => {
+    expect(databaseName("postgres://test:test@testhost:5432/prod")).toBe("prod");
+    expect(() => assertTestDatabase("postgres://test:test@testhost:5432/prod")).toThrow(/Refusing/);
   });
 });

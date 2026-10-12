@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "fixture-product",
+      "category": "clothing",
+      "tags": ["fixture", "smoke"],
+      "input": "tests/fixtures/product.jpg",
+      "rights": "Repo test fixture; no third-party or user image.",
+      "expectedShots": 3
+    },
+    {
+      "id": "fixture-ring",
+      "category": "jewellery",
+      "tags": ["fixture", "smoke", "ring"],
+      "input": "tests/fixtures/ring.jpg",
+      "rights": "Repo test fixture; no third-party or user image.",
+      "expectedShots": 3
+    }
+  ]
+}

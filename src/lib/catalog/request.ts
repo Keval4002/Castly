@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ASPECT_RATIOS } from "./options";
-import { MAX_VARIANTS, TIER_ORDER } from "@/lib/pricing";
+import { DEFAULT_COUNT, LOOK_IDS, SIZES, optionsForLook } from "./simple";
+import { DEFAULT_TIER, MAX_VARIANTS, TIER_ORDER } from "@/lib/pricing";
 
 export const createGenerationSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -21,3 +22,30 @@ export const createGenerationSchema = z.object({
 });
 
 export type CreateGenerationInput = z.infer<typeof createGenerationSchema>;
+
+/** What the simple Studio sends: a look, an optional backdrop and a size. Quality and variants are fixed. */
+export const simpleGenerationSchema = z.object({
+  sourceAssetId: z.string().uuid(),
+  category: z.enum(["clothing", "jewellery"]),
+  productType: z.string().max(40).nullish(),
+  overrideDetection: z.boolean().optional(),
+  look: z.enum(LOOK_IDS as [string, ...string[]]),
+  backdrop: z.string().max(40).nullish(),
+  aspectRatio: z.enum(SIZES.map((s) => s.id) as [string, ...string[]]),
+});
+
+export type SimpleGenerationInput = z.infer<typeof simpleGenerationSchema>;
+
+export function toCreateInput(input: SimpleGenerationInput): CreateGenerationInput {
+  return {
+    sourceAssetId: input.sourceAssetId,
+    category: input.category,
+    productType: input.productType,
+    overrideDetection: input.overrideDetection,
+    aspectRatio: input.aspectRatio,
+    customNote: undefined,
+    tier: DEFAULT_TIER,
+    count: DEFAULT_COUNT,
+    options: optionsForLook(input.category, input.look, input.backdrop, input.productType),
+  };
+}

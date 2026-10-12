@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { saveAsset } from "@/lib/assets";
 import { getBalance, InsufficientCreditsError } from "@/lib/credits";
 import { db } from "@/lib/db";
-import { generations } from "@/lib/db/schema";
+import { generationImages, generations } from "@/lib/db/schema";
 import {
   createGeneration,
   finalizeGeneration,
@@ -38,9 +38,66 @@ const input = (assetId: string, extra: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   delete process.env.MOCK_IMAGE_FAIL_PATTERN;
+  process.env.MOCK_FIDELITY = JSON.stringify(verdict({ same_product: true, score: 0.95, differences: [] }));
   return resetDb();
 });
 afterAll(resetDb);
+
+const verdict = (v: Record<string, unknown>) => ({
+  reference_features: ["red body", "gold dots"],
+  checks: [
+    { feature: "red body", status: "match" },
+    { feature: "gold dots", status: "match" },
+  ],
+  product_prominence: "hero",
+  ...v,
+});
+
+describe("product fidelity", () => {
+  it("never delivers an image whose product changed: retries, then refunds", async () => {
+    process.env.MOCK_FIDELITY = JSON.stringify(verdict({ same_product: false, score: 0.4, differences: ["border colour changed"] }));
+    const { user, asset } = await setup();
+    const gen = await createGeneration(user.id, input(asset.id));
+    await runGeneration(gen.id);
+    const dto = (await getGeneration(user.id, gen.id))!;
+    expect(dto.status).toBe("failed");
+    expect(dto.images.every((i) => i.fidelity?.passed === false)).toBe(true);
+    expect(await getBalance(user.id)).toBe(SIGNUP_BONUS_CREDITS);
+    const rows = await db().select().from(generationImages).where(eq(generationImages.generationId, gen.id));
+    expect(rows.map((r) => r.attempts)).toEqual([2, 2]);
+  });
+
+  it("marks verified images and stops after the first passing attempt", async () => {
+    process.env.MOCK_FIDELITY = JSON.stringify(verdict({ same_product: true, score: 0.95, differences: [] }));
+    const { user, asset } = await setup();
+    const gen = await createGeneration(user.id, input(asset.id));
+    await runGeneration(gen.id);
+    const dto = (await getGeneration(user.id, gen.id))!;
+    expect(dto.status).toBe("succeeded");
+    expect(dto.images.map((i) => i.fidelity)).toEqual([
+      { verified: true, passed: true, score: 0.95 },
+      { verified: true, passed: true, score: 0.95 },
+    ]);
+    const rows = await db().select().from(generationImages).where(eq(generationImages.generationId, gen.id));
+    expect(rows.map((r) => r.attempts)).toEqual([1, 1]);
+  });
+
+  it("rejects a lenient overall score when a checked feature changed, and a product shown too small", async () => {
+    process.env.MOCK_FIDELITY = JSON.stringify(
+      verdict({ same_product: true, score: 0.98, differences: [], checks: [{ feature: "centre pendant", status: "changed" }, { feature: "gold beads", status: "match" }] }),
+    );
+    let { user, asset } = await setup();
+    let gen = await createGeneration(user.id, input(asset.id));
+    await runGeneration(gen.id);
+    expect((await getGeneration(user.id, gen.id))!.status).toBe("failed");
+
+    process.env.MOCK_FIDELITY = JSON.stringify(verdict({ same_product: true, score: 0.97, differences: [], product_prominence: "small" }));
+    ({ user, asset } = await setup());
+    gen = await createGeneration(user.id, input(asset.id));
+    await runGeneration(gen.id);
+    expect((await getGeneration(user.id, gen.id))!.status).toBe("failed");
+  });
+});
 
 describe("generation lifecycle", () => {
   it("debits, generates every variant at the exact ratio, and stays debited", async () => {

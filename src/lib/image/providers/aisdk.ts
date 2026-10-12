@@ -33,6 +33,7 @@ function aiSdkProvider(spec: Spec): ImageProvider {
           model,
           prompt: { text: req.prompt, images: [req.image.data] },
           maxRetries: 1,
+          ...(req.seed !== undefined ? { seed: req.seed } : {}),
           abortSignal: AbortSignal.timeout(spec.timeoutMs),
           ...spec.settings(req),
         });

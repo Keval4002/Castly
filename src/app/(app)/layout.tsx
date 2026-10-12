@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
+  // First sign-in: a quick 3-tap setup before the workspace.
+  if (!profile.onboardedAt) redirect("/onboarding");
   return (
     <CreditsProvider initial={profile.credits}>
       <AppHeader email={profile.email} />

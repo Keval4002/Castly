@@ -12,6 +12,7 @@ import {
   Info,
   Loader2,
   RefreshCw,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -88,6 +89,16 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img.thumbUrl} alt={`Variant ${img.idx + 1}`} className="h-full w-full object-cover" loading="lazy" />
                 </button>
+                {img.fidelity?.verified && img.fidelity.passed && (
+                  <span
+                    className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 font-ui text-[11px] font-medium text-ok shadow"
+                    title="Checked against your photo: the product is unchanged"
+                    data-testid="fidelity-badge"
+                  >
+                    <ShieldCheck className="h-3 w-3" aria-hidden />
+                    Product verified
+                  </span>
+                )}
                 <button
                   className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 font-ui text-xs font-medium opacity-100 shadow sm:opacity-0 sm:group-hover:opacity-100"
                   onClick={() => img.url && downloadImage(img.url, `dukaanshot-${gen.id.slice(0, 8)}-${img.idx + 1}.jpg`)}
@@ -95,15 +106,27 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
                   <Download className="h-3.5 w-3.5" aria-hidden />
                   Download
                 </button>
+                {img.purpose && (
+                  <span
+                    className="pointer-events-none absolute bottom-2 left-2 max-w-[55%] truncate rounded-full bg-black/55 px-2 py-0.5 font-ui text-[11px] text-white"
+                    data-testid="shot-purpose"
+                  >
+                    {img.purpose}
+                  </span>
+                )}
               </>
             ) : img.status === "failed" ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-ink-2">
                 <ImageOff className="h-5 w-5 text-ink-3" aria-hidden />
                 <span>
-                Couldn’t generate this one.
-                <br />
-                Credits refunded.
+                  {img.fidelity?.verified && !img.fidelity.passed ? "The product didn’t match your photo, so we held it back." : img.fidelity && !img.fidelity.verified ? "We couldn’t verify this one." : "Couldn’t generate this one."}
+                  <br />
+                  Credits refunded.
                 </span>
+              </div>
+            ) : img.status === "held" ? (
+              <div className="shimmer flex h-full w-full items-end justify-center p-3 text-center text-xs text-ink-2">
+                <span>Running a final quality check…</span>
               </div>
             ) : (
               <div className="shimmer h-full w-full" />
@@ -111,6 +134,18 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
           </div>
         ))}
       </div>
+      {gen.skippedShots && gen.skippedShots.length > 0 && (
+        <ul className="space-y-1 px-4 pb-3 text-xs text-ink-2" data-testid="skipped-shots">
+          {gen.skippedShots.map((k) => (
+            <li key={k.purpose} className="flex items-start gap-1.5">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>
+                <strong className="font-medium">{k.label}:</strong> {k.reason}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       {gen.corrections.length > 0 && (
         <p className="flex items-center gap-1.5 px-4 pb-3 text-xs text-navy" data-testid="card-correction">
           <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />

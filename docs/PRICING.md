@@ -15,10 +15,10 @@ at **₹88**.
 | OpenAI · gpt-image-1, quality *high*, portrait + high-fidelity input | **Premium** (default) | ~$0.25 + ~$0.04 input | ≈ ₹25.5 | Slowest (~30–60s) |
 | OpenAI · gpt-image-1, *medium* | — (option) | ~$0.063 + input | ≈ ₹8 | |
 | OpenAI · gpt-image-1-mini, *medium* / *high* | — (option) | $0.015 / $0.052 | ₹1.3 / ₹4.6 | Cheapest, but weaker at keeping the product identical |
-| Prompt LLM: Gemini 2.5 Flash-Lite (default) or Claude Haiku 5.5 | per batch | ~$0.0005 | ₹0.04 | ~1.5k input + 0.6k output tokens incl. a 512px preview |
+| Prompt LLM: Gemini 3.5 Flash-Lite (default) or Claude Haiku 5.5 | per batch | ~$0.0005 | ₹0.04 | ~1.5k input + 0.6k output tokens incl. a 512px preview |
 
 | **Free (testing): Cloudflare Workers AI FLUX.2 klein** | `IMAGE_PROVIDER_MODE=free` | $0 within 10k neurons/day | ₹0 | Then $0.011 / 1k neurons |
-| **Free (testing): Groq Llama 4 Scout** prompt LLM | any | $0 on free tier | ₹0 | Rate-limited (~30 req/min) |
+| **Free (testing): Groq Qwen 3.8** prompt LLM | any | $0 on free tier | ₹0 | Rate-limited (~30 req/min) |
 
 Storage and egress (Supabase) come to roughly ₹0.01 per image and can be ignored.
 
@@ -38,9 +38,12 @@ Prices include 18% GST. Razorpay takes ~2% + GST on the fee (2.36%).
 |---|---|---|---|---|---|
 | Quick | 1 | ₹3.44 | ₹2.6 (Seedream) | **~24%** | Gemini ₹3.4 → ~0% |
 | Studio | 2 | ₹6.88 | ₹3.4 (Gemini) | **~50%** | Kontext ₹3.5 → ~49% |
-| Premium HD | 8 | ₹27.5 | ₹25.5 (gpt-image-1 high) | **~7%** | Gemini ₹3.4 → ~88% |
+| Premium HD | 10 | ₹34.4 | ₹25.5 (gpt-image-1 high) | **~26%** | Gemini ₹3.4 → ~90% |
+| Premium HD, one fidelity retry | 10 | ₹34.4 | ₹25.5 + ₹3.4 (retry on Gemini) + judges ≈ ₹29.5 | **~14%** | The retry runs on a cheaper model, never on gpt-image-1 again |
 
-> Premium was 6 credits in the first draft, which **lost money** (₹20.6 < ₹25.5). It is now 8.
+> Premium was 6 credits in the first draft, which **lost money** (₹20.6 < ₹25.5), then 8 (~7%). It is now **10 credits** (decided Oct 2026).
+> Premium gets one automatic fidelity retry, on the Studio chain (Gemini first), and every shot has a spend cap — see `SHOT_BUDGET_MICROS` in `src/lib/image/costs.ts`.
+> **Free signup credits:** 10 credits now buy exactly one Premium image (≈ ₹25–30 of cost), so consider excluding Premium from the free grant.
 > For a healthy Premium margin, either charge **10 credits**, or route Premium to
 > **Nano Banana Pro (₹13.2)** or **gpt-image-1 medium (≈ ₹8)** at 6 credits.
 
