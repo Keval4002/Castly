@@ -25,6 +25,10 @@ test("signup → upload → generate → refund-safe errors → top up → webho
   await expect(page.getByTestId("generate")).toBeDisabled();
   await page.getByTestId("file-input").setInputFiles("tests/fixtures/product.jpg");
   await expect(page.getByTestId("upload-preview")).toBeVisible();
+  // The classifier recognises the dress and pre-selects it.
+  await expect(page.getByTestId("detected-type")).toHaveText("Dress / gown");
+  await expect(page.getByTestId("category-clothing")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("type-dress")).toHaveAttribute("data-active", "true");
 
   // 3. Configure: clothing → "Lifestyle street" preset, 2 variants, Studio tier, story ratio.
   await page.getByRole("button", { name: /Lifestyle street/ }).click();
@@ -50,6 +54,7 @@ test("signup → upload → generate → refund-safe errors → top up → webho
 
   // 5. Jewellery batch with too few credits is rejected without charging.
   await page.getByTestId("category-jewellery").click();
+  await expect(page.getByTestId("detection-mismatch")).toContainText("looks like Dress / gown");
   await page.getByTestId("count-4").click();
   await page.getByTestId("tier-premium").click();
   await page.getByTestId("generate").click();
@@ -89,9 +94,10 @@ test("signup → upload → generate → refund-safe errors → top up → webho
   // 8. Now the premium jewellery batch is affordable.
   await page.goto("/studio");
   await expect(credits(page)).toHaveText("156");
-  await page.getByTestId("file-input").setInputFiles("tests/fixtures/product.jpg");
-  await expect(page.getByTestId("upload-preview")).toBeVisible();
-  await page.getByTestId("category-jewellery").click();
+  await page.getByTestId("file-input").setInputFiles("tests/fixtures/ring.jpg");
+  await expect(page.getByTestId("detected-type")).toHaveText("Ring");
+  // Jewellery is selected automatically from the photo.
+  await expect(page.getByTestId("category-jewellery")).toHaveAttribute("data-active", "true");
   await page.getByRole("button", { name: /Minimal marble/ }).click();
   await page.getByTestId("count-3").click();
   await page.getByTestId("tier-premium").click();
@@ -114,6 +120,38 @@ test("signup → upload → generate → refund-safe errors → top up → webho
   const forbidden = await otherPage.request.get(`/api/generations/${genId}`);
   expect(forbidden.status()).toBe(404);
   await other.close();
+});
+
+test("classifier corrects a wrong category, and the seller can override it", async ({ page }) => {
+  await signIn(page, `fix-${randomUUID().slice(0, 8)}@shop.test`);
+  await page.getByTestId("file-input").setInputFiles("tests/fixtures/product.jpg");
+  await expect(page.getByTestId("detected-type")).toHaveText("Dress / gown");
+
+  // Seller wrongly says it's a ring.
+  await page.getByTestId("category-jewellery").click();
+  await page.getByTestId("type-ring").click();
+  await expect(page.getByTestId("detection-mismatch")).toBeVisible();
+  await page.getByTestId("count-1").click();
+  await page.getByTestId("tier-economy").click();
+  await page.getByTestId("generate").click();
+
+  // Generated as the detected dress, and the seller is told why.
+  await expect(page.getByTestId("correction-notice")).toContainText("Category changed from Jewellery to Clothing");
+  const corrected = page.getByTestId("generation-card").first();
+  await expect(corrected).toContainText("Clothing › Dress / gown");
+  await expect(corrected.getByTestId("card-correction")).toBeVisible();
+  // Controls now reflect the correction.
+  await expect(page.getByTestId("category-clothing")).toHaveAttribute("data-active", "true");
+
+  // Explicit override: the seller insists.
+  await page.getByTestId("category-jewellery").click();
+  await page.getByTestId("type-ring").click();
+  await page.getByTestId("override-detection").check();
+  await page.getByTestId("generate").click();
+  const overridden = page.getByTestId("generation-card").first();
+  await expect(overridden).toContainText("Jewellery › Ring");
+  await expect(overridden.getByTestId("card-correction")).toHaveCount(0);
+  await expect(credits(page)).toHaveText("8");
 });
 
 test("signed-out users are redirected to login and APIs return 401", async ({ page }) => {

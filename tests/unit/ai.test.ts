@@ -14,6 +14,7 @@ const calls: { llm: string[]; llmOptions: unknown[]; image: { id: string; option
   image: [],
 };
 const behaviour: Record<string, "ok" | "fail" | "garbage"> = {};
+let classifierAnswer: Record<string, unknown> = {};
 
 function textResult(text: string) {
   return {
@@ -37,6 +38,9 @@ function fakeLM(provider: string) {
         calls.llmOptions.push(options);
         if (behaviour[provider] === "fail") throw new Error(`${provider} down`);
         if (behaviour[provider] === "garbage") return textResult("not json");
+        if (JSON.stringify(options.prompt).includes("You classify product photos")) {
+          return textResult(JSON.stringify(classifierAnswer));
+        }
         const n = Number((JSON.stringify(options.prompt).match(/Number of prompts: (\d)/) ?? [])[1] ?? 1);
         return textResult(
           JSON.stringify({
@@ -94,6 +98,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   process.env.PROMPT_LLM = "template";
+  process.env.CLASSIFIER_MODE = "mock";
   process.env.IMAGE_PROVIDER_MODE = "mock";
   resetEnvCache();
   vi.unstubAllGlobals();
@@ -213,5 +218,27 @@ describe("free mode: Cloudflare Workers AI FLUX.2", () => {
     const { providersFor } = await import("@/lib/image/router");
     // Gemini (fake-configured here) is the only other free-chain member.
     expect(providersFor("premium").map((p) => p.id)).toEqual(["gemini"]);
+  });
+});
+
+describe("product classifier via Vercel AI SDK", () => {
+  it("classifies with the preferred LLM, falls back on failure, and normalises the answer", async () => {
+    setEnv({ CLASSIFIER_MODE: "auto", PROMPT_LLM: "gemini" });
+    behaviour.google = "fail";
+    classifierAnswer = { category: "jewellery", product_type: "earrings", confidence: 0.88, description: "Jhumkas", issues: [] };
+    const { classifyProduct } = await import("@/lib/classify/classifier");
+    const result = await classifyProduct(Buffer.from("jpeg"));
+    expect(calls.llm).toEqual(["google", "groq"]);
+    expect(JSON.stringify(calls.llmOptions[1])).toContain('"type":"file"');
+    expect(result).toMatchObject({ category: "jewellery", productType: "earrings", confidence: 0.88, source: "groq" });
+  });
+
+  it("returns null (never blocks) when every LLM fails or classification is off", async () => {
+    setEnv({ CLASSIFIER_MODE: "auto", PROMPT_LLM: "groq" });
+    behaviour.google = behaviour.groq = behaviour.anthropic = "fail";
+    const { classifyProduct } = await import("@/lib/classify/classifier");
+    expect(await classifyProduct(Buffer.from("jpeg"))).toBeNull();
+    setEnv({ CLASSIFIER_MODE: "off" });
+    expect(await classifyProduct(Buffer.from("jpeg"))).toBeNull();
   });
 });

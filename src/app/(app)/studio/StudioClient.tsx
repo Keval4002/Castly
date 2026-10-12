@@ -14,6 +14,13 @@ import {
   type CategoryId,
   type OptionGroup,
 } from "@/lib/catalog/options";
+import {
+  CLASSIFICATION_ISSUES,
+  CORRECTION_CONFIDENCE,
+  describeCorrection,
+  type Classification,
+  type Correction,
+} from "@/lib/classify/reconcile";
 import { ApiError, apiFetch, compressImage } from "@/lib/client/fetcher";
 import { isActive, type GenerationDTO } from "@/lib/client/types";
 import { useGenerationPolling } from "@/lib/client/usePolling";
@@ -25,6 +32,7 @@ interface UploadedAsset {
   url: string;
   width: number;
   height: number;
+  classification: Classification | null;
 }
 
 export function StudioClient({
@@ -51,6 +59,9 @@ export function StudioClient({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; topup?: boolean } | null>(null);
+  const [productTypeId, setProductTypeId] = useState<string | null>(null);
+  const [override, setOverride] = useState(false);
+  const [notice, setNotice] = useState<Correction[] | null>(null);
   const [gens, setGens] = useState<GenerationDTO[]>(initial);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -65,8 +76,23 @@ export function StudioClient({
 
   const canGenerate = Boolean(asset) && !uploading && !submitting && tierAvailability[tier];
 
+  const detection = asset?.classification ?? null;
+  const confident = Boolean(detection && detection.confidence >= CORRECTION_CONFIDENCE);
+  const detectedLabel =
+    detection && detection.category !== "other"
+      ? CATEGORIES[detection.category].productTypes.find((t) => t.id === detection.productType)?.label ??
+        CATEGORIES[detection.category].label
+      : null;
+  const mismatch =
+    confident &&
+    detection!.category !== "other" &&
+    (detection!.category !== category || (productTypeId !== null && productTypeId !== detection!.productType));
+  const unsupported = confident && detection!.category === "other";
+
   function pickCategory(id: CategoryId) {
     setCategory(id);
+    // Keep the detected type when switching back to the detected category.
+    setProductTypeId(detection && detection.category === id ? detection.productType : null);
     const preset = CATEGORIES[id].presets[0];
     setValues({ ...defaultValues(id), ...preset.values });
     setPresetId(preset.id);
@@ -94,6 +120,21 @@ export function StudioClient({
       form.append("file", blob, "product.jpg");
       const { asset } = await apiFetch<{ asset: UploadedAsset }>("/api/uploads", { method: "POST", body: form });
       setAsset(asset);
+      setOverride(false);
+      setNotice(null);
+      // Auto-select what the classifier saw so the seller doesn't have to.
+      const c = asset.classification;
+      if (c && c.category !== "other" && c.confidence >= CORRECTION_CONFIDENCE) {
+        if (c.category !== category) {
+          setCategory(c.category);
+          const preset = CATEGORIES[c.category].presets[0];
+          setValues({ ...defaultValues(c.category), ...preset.values });
+          setPresetId(preset.id);
+        }
+        setProductTypeId(c.productType);
+      } else {
+        setProductTypeId(c && c.category === category ? c.productType : null);
+      }
     } catch (err) {
       setError({ message: (err as Error).message });
     } finally {
@@ -110,8 +151,11 @@ export function StudioClient({
     tier: string;
     count: number;
     customNote?: string;
+    productType?: string | null;
+    overrideDetection?: boolean;
   }) {
     setError(null);
+    setNotice(null);
     setSubmitting(true);
     try {
       const res = await apiFetch<{ generation: GenerationDTO; balance: number }>("/api/generations", {
@@ -119,6 +163,18 @@ export function StudioClient({
         body: JSON.stringify(body),
       });
       setGens((g) => [res.generation, ...g]);
+      if (res.generation.corrections.length) {
+        // Reflect the server's correction in the controls for the next batch.
+        const g = res.generation;
+        setNotice(g.corrections);
+        if (g.category !== category) {
+          setCategory(g.category);
+          const preset = CATEGORIES[g.category].presets[0];
+          setValues({ ...defaultValues(g.category), ...preset.values });
+          setPresetId(preset.id);
+        }
+        setProductTypeId(g.productType);
+      }
       setCredits(res.balance);
       document.getElementById("results")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
@@ -139,6 +195,8 @@ export function StudioClient({
       tier,
       count,
       customNote: note.trim() || undefined,
+      productType: productTypeId,
+      overrideDetection: override || undefined,
     });
   }
 
@@ -152,6 +210,7 @@ export function StudioClient({
       tier: g.tier,
       count: g.count,
       customNote: g.customNote ?? undefined,
+      productType: g.productType,
     });
   }
 
@@ -193,6 +252,7 @@ export function StudioClient({
               <p className="text-ink-2">Clear, well-lit photo of one product. JPG/PNG, any phone photo works.</p>
             </div>
           </div>
+          {asset && <DetectionSummary detection={detection} label={detectedLabel} />}
         </Step>
 
         <Step n={2} title="What are you selling?">
@@ -211,6 +271,49 @@ export function StudioClient({
               </button>
             ))}
           </div>
+          <div className="mt-3" role="radiogroup" aria-label="Product type">
+            <span className="label">Product type</span>
+            <div className="flex flex-wrap gap-2">
+              {cat.productTypes.map((t) => (
+                <button
+                  key={t.id}
+                  role="radio"
+                  aria-checked={productTypeId === t.id}
+                  className="chip"
+                  data-active={productTypeId === t.id}
+                  data-testid={`type-${t.id}`}
+                  onClick={() => setProductTypeId(productTypeId === t.id ? null : t.id)}
+                >
+                  {t.label}
+                  {detection?.productType === t.id && detection.category === category && " ✓"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(mismatch || unsupported) && (
+            <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-warn" data-testid="detection-mismatch">
+              {unsupported ? (
+                <p>
+                  This photo doesn’t look like clothing or jewellery
+                  {detection!.description ? ` (we see: ${detection!.description})` : ""}. Results may be poor.
+                </p>
+              ) : (
+                <p>
+                  This photo looks like <b>{detectedLabel}</b> ({CATEGORIES[detection!.category as CategoryId].label}).{" "}
+                  {override ? "We’ll use your selection." : `We’ll generate it as ${detectedLabel} for accurate results.`}
+                </p>
+              )}
+              <label className="mt-2 flex items-center gap-2 text-ink">
+                <input
+                  type="checkbox"
+                  checked={override}
+                  onChange={(e) => setOverride(e.target.checked)}
+                  data-testid="override-detection"
+                />
+                {unsupported ? "Generate anyway" : "I’m sure — use my selection"}
+              </label>
+            </div>
+          )}
         </Step>
 
         <Step n={3} title="Pick a look">
@@ -309,6 +412,11 @@ export function StudioClient({
         </Step>
 
         <div className="sticky bottom-0 -mx-1 bg-bg/95 px-1 pb-2 pt-2 backdrop-blur lg:static lg:bg-transparent">
+          {notice && (
+            <p className="mb-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800" data-testid="correction-notice">
+              Auto-corrected from your photo: {notice.map(describeCorrection).join("; ")}.
+            </p>
+          )}
           {error && (
             <p className="mb-2 rounded-lg bg-red-50 p-3 text-sm text-err" data-testid="studio-error">
               {error.message}{" "}
@@ -342,6 +450,33 @@ export function StudioClient({
       <section id="results" className="min-w-0 space-y-4 scroll-mt-20">
         {gens.length === 0 ? <EmptyState /> : gens.map((g) => <GenerationCard key={g.id} gen={g} onRerun={rerun} />)}
       </section>
+    </div>
+  );
+}
+
+function DetectionSummary({ detection, label }: { detection: Classification | null; label: string | null }) {
+  if (!detection) {
+    return <p className="mt-2 text-xs text-ink-2">Couldn’t auto-detect the product — please choose the type below.</p>;
+  }
+  const pct = Math.round(detection.confidence * 100);
+  const sure = detection.confidence >= CORRECTION_CONFIDENCE;
+  return (
+    <div className="mt-2 space-y-1 text-xs" data-testid="detection">
+      <p className={sure ? "text-ok" : "text-ink-2"}>
+        {detection.category === "other" ? (
+          <>Detected: not clothing or jewellery ({pct}%)</>
+        ) : (
+          <>
+            Detected: <b data-testid="detected-type">{label}</b> · {pct}% {sure ? "✓" : "— please confirm below"}
+          </>
+        )}
+        {detection.description && <span className="text-ink-2"> — {detection.description}</span>}
+      </p>
+      {detection.issues.map((i) => (
+        <p key={i} className="text-warn">
+          ⚠ {CLASSIFICATION_ISSUES[i]}
+        </p>
+      ))}
     </div>
   );
 }

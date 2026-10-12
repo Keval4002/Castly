@@ -27,8 +27,22 @@ const LLMS: Record<PromptLLMId, LLMConfig> = {
   },
 };
 
+export const LLM_IDS: PromptLLMId[] = ["gemini", "groq", "claude"];
+
 export function isLLMConfigured(id: PromptLLMId): boolean {
   return LLMS[id].model() !== null;
+}
+
+/** Model + provider options for one LLM, or null when it isn't configured. */
+export function languageModel(id: PromptLLMId): (LLMConfig & { instance: LanguageModel }) | null {
+  const instance = LLMS[id].model();
+  return instance ? { ...LLMS[id], instance } : null;
+}
+
+/** Preferred LLM first, then every other one (PROMPT_LLM=template → none). */
+export function llmOrder(): PromptLLMId[] {
+  const preferred = env().PROMPT_LLM;
+  return preferred === "template" ? [] : [preferred, ...LLM_IDS.filter((x) => x !== preferred)];
 }
 
 /** Ask one LLM for a prompt plan. Returns null if it isn't configured or answers badly. */

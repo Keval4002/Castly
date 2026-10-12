@@ -43,6 +43,7 @@ export default defineConfig({
       STORAGE_DRIVER: "local",
       LOCAL_STORAGE_DIR: ".data/e2e-storage",
       IMAGE_PROVIDER_MODE: "mock",
+      CLASSIFIER_MODE: "mock",
       PAYMENTS_MOCK: "true",
       PROMPT_LLM: "template",
       RAZORPAY_WEBHOOK_SECRET: "whsec_e2e",

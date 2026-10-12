@@ -1,10 +1,8 @@
 import "server-only";
-import { env } from "@/lib/env";
-import { llmPromptPlan, type PromptLLMId } from "./llm";
+import { llmOrder, llmPromptPlan } from "./llm";
 import { templatePrompts, type PromptPlan, type PromptRequest } from "./shared";
 
 const LLM_TIMEOUT_MS = 12_000;
-const ALL: PromptLLMId[] = ["gemini", "groq", "claude"];
 
 /**
  * Turn the user's selections into N distinct, product-preserving prompts.
@@ -12,10 +10,7 @@ const ALL: PromptLLMId[] = ["gemini", "groq", "claude"];
  * deterministic template — so generation never blocks on the LLM.
  */
 export async function buildPromptPlan(req: PromptRequest): Promise<PromptPlan> {
-  const preferred = env().PROMPT_LLM;
-  const order = preferred === "template" ? [] : [preferred, ...ALL.filter((x) => x !== preferred)];
-
-  for (const id of order) {
+  for (const id of llmOrder()) {
     try {
       const plan = await llmPromptPlan(id, req, LLM_TIMEOUT_MS);
       if (plan) return plan;

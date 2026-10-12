@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIES, describeSelections, type AspectRatio, type CategoryId } from "@/lib/catalog/options";
+import { CATEGORIES, describeSelections, isOnModel, productType, type AspectRatio, type CategoryId } from "@/lib/catalog/options";
 
 export interface PromptRequest {
   category: CategoryId;
@@ -7,6 +7,10 @@ export interface PromptRequest {
   aspectRatio: AspectRatio;
   count: number;
   customNote?: string;
+  /** ProductType id (from the classifier or the user). */
+  productType?: string | null;
+  /** What the classifier saw, e.g. "Maroon silk saree with zari border". */
+  detectedDescription?: string;
   /** Small JPEG preview of the product so the LLM can describe it precisely. */
   preview?: Buffer;
   /** The user's recent prompts with similar settings — to avoid repeats. */
@@ -45,8 +49,12 @@ Respond only with JSON: {"product_summary": string, "prompts": string[]} contain
 export function buildUserMessage(req: PromptRequest): string {
   const cat = CATEGORIES[req.category];
   const selections = describeSelections(req.category, req.values).map((s) => `- ${s.label}: ${s.prompt}`);
+  const type = productType(req.category, req.productType);
   const parts = [
     `Product category: ${cat.label}.`,
+    type ? `Product type: ${type.noun}.` : "",
+    type?.wornOn && isOnModel(req.category, req.values) ? `When worn by the model it must be ${type.wornOn}.` : "",
+    req.detectedDescription ? `Product as identified in the photo: ${req.detectedDescription}.` : "",
     `Output aspect ratio: ${req.aspectRatio.id} (${req.aspectRatio.useCase}).`,
     `Selections:\n${selections.join("\n") || "- (none)"}`,
     `Number of prompts: ${req.count}.`,
@@ -56,7 +64,7 @@ export function buildUserMessage(req: PromptRequest): string {
   if (req.recentPrompts.length) {
     parts.push(`Recent prompts to avoid repeating:\n${req.recentPrompts.map((p) => `- ${p.slice(0, 220)}`).join("\n")}`);
   }
-  return parts.join("\n\n");
+  return parts.filter(Boolean).join("\n\n");
 }
 
 /** Validate/normalise LLM output into exactly `count` prompts. */
@@ -111,7 +119,9 @@ export function sampleDirections(category: CategoryId, count: number, rand: () =
 
 export function templatePrompts(req: PromptRequest): string[] {
   const cat = CATEGORIES[req.category];
-  const subject = req.category === "clothing" ? "garment" : "jewellery piece";
+  const type = productType(req.category, req.productType);
+  const subject = type?.noun ?? (req.category === "clothing" ? "garment" : "jewellery piece");
+  const worn = type?.wornOn && isOnModel(req.category, req.values) ? `The model wears it ${type.wornOn}.` : "";
   const selections = describeSelections(req.category, req.values)
     .map((s) => s.prompt)
     .join("; ");
@@ -119,6 +129,7 @@ export function templatePrompts(req: PromptRequest): string[] {
     [
       `Using the provided product photo, create a photorealistic professional ${cat.label.toLowerCase()} catalogue photograph of this exact ${subject}.`,
       selections ? `${selections}.` : "",
+      worn,
       `Composition: ${direction}.`,
       req.customNote ? `Styling preference: ${req.customNote}.` : "",
       `Keep the ${subject} exactly identical to the photo — same colours, pattern, texture, shape and every detail; do not redesign it.`,

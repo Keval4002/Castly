@@ -1,7 +1,8 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getOwnedAsset, saveAsset, signAssets } from "@/lib/assets";
-import { aspectRatio, resolveOptions, type CategoryId } from "@/lib/catalog/options";
+import { aspectRatio, CATEGORIES, resolveOptions, type CategoryId } from "@/lib/catalog/options";
+import { reconcileProduct, type Correction } from "@/lib/classify/reconcile";
 import type { CreateGenerationInput } from "@/lib/catalog/request";
 import { applyCreditMovement, moveCredits } from "@/lib/credits";
 import { db } from "@/lib/db";
@@ -29,7 +30,6 @@ export class GenerationError extends Error {
 
 export async function createGeneration(userId: string, input: CreateGenerationInput): Promise<Generation> {
   const tier = input.tier as TierId;
-  const category = input.category as CategoryId;
   if (!isTierAvailable(tier)) {
     throw new GenerationError(`${TIERS[tier].label} is temporarily unavailable. Try another quality tier.`, 503, "tier_unavailable");
   }
@@ -52,8 +52,25 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
     throw new GenerationError("You already have batches in progress. Please wait for them to finish.", 429, "too_many_active");
   }
 
+  // Trust a confident classifier over a mismatching user selection.
+  const product = reconcileProduct(
+    { category: input.category as CategoryId, productType: input.productType, overrideDetection: input.overrideDetection },
+    source.classification ?? null,
+  );
+  if (!product.ok) {
+    throw new GenerationError(
+      `This looks like ${product.description ? `“${product.description}”` : "something other than clothing or jewellery"}. ` +
+        "Castly currently supports clothing and jewellery. If this is wrong, confirm your product type and try again.",
+      422,
+      "unsupported_product",
+    );
+  }
+  const category = product.category;
+  const categoryCorrected = product.corrections.some((c) => c.field === "category");
+
   const cost = generationCost(tier, input.count);
-  const options = resolveOptions(category, input.options);
+  // Options chosen for the wrong category don't apply — start from that category's first look.
+  const options = resolveOptions(category, categoryCorrected ? CATEGORIES[category].presets[0].values : input.options);
 
   return d.transaction(async (tx) => {
     const [gen] = await tx
@@ -62,6 +79,8 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
         userId,
         sourceAssetId: source.id,
         category,
+        productType: product.productType,
+        corrections: product.corrections,
         tier,
         aspectRatio: input.aspectRatio,
         options,
@@ -131,6 +150,8 @@ export async function runGeneration(generationId: string): Promise<void> {
       aspectRatio: ar,
       count: gen.count,
       customNote: gen.customNote ?? undefined,
+      productType: gen.productType,
+      detectedDescription: source.classification?.description,
       preview: await llmPreview(sourceData),
       recentPrompts: recent,
       directions: sampleDirections(category, gen.count),
@@ -244,6 +265,8 @@ export interface GenerationDTO {
   id: string;
   status: Generation["status"];
   category: CategoryId;
+  productType: string | null;
+  corrections: Correction[];
   tier: string;
   aspectRatio: string;
   options: Record<string, string>;
@@ -283,6 +306,8 @@ async function toDTOs(gens: Generation[]): Promise<GenerationDTO[]> {
       id: g.id,
       status: g.status,
       category: g.category as CategoryId,
+      productType: g.productType,
+      corrections: g.corrections,
       tier: g.tier,
       aspectRatio: g.aspectRatio,
       options: g.options,

@@ -34,6 +34,15 @@ export interface Preset {
   values: Record<string, string>;
 }
 
+export interface ProductType {
+  id: string;
+  label: string;
+  /** Precise noun used in prompts, e.g. "silk saree". */
+  noun: string;
+  /** Body area for on-model shots (jewellery), so the model wears it correctly. */
+  wornOn?: string;
+}
+
 export interface Category {
   id: CategoryId;
   label: string;
@@ -41,6 +50,7 @@ export interface Category {
   emoji: string;
   groups: OptionGroup[];
   presets: Preset[];
+  productTypes: ProductType[];
 }
 
 export interface AspectRatio {
@@ -98,6 +108,20 @@ const clothing: Category = {
   label: "Clothing",
   description: "Sarees, kurtas, dresses, tops, menswear, kidswear",
   emoji: "👗",
+  productTypes: [
+    { id: "saree", label: "Saree", noun: "saree" },
+    { id: "lehenga", label: "Lehenga", noun: "lehenga choli set" },
+    { id: "kurta", label: "Kurta / kurti", noun: "kurta" },
+    { id: "ethnic_set", label: "Ethnic set", noun: "ethnic suit set (kurta with bottom and dupatta)" },
+    { id: "dress", label: "Dress / gown", noun: "dress" },
+    { id: "top", label: "Top / blouse", noun: "top" },
+    { id: "shirt", label: "Shirt", noun: "shirt" },
+    { id: "tshirt", label: "T-shirt", noun: "t-shirt" },
+    { id: "bottoms", label: "Jeans / trousers / skirt", noun: "bottom wear (jeans, trousers or skirt)" },
+    { id: "outerwear", label: "Jacket / coat", noun: "jacket" },
+    { id: "kidswear", label: "Kidswear", noun: "children's garment" },
+    { id: "other_apparel", label: "Other apparel", noun: "garment" },
+  ],
   groups: [
     {
       id: "presentation",
@@ -243,6 +267,19 @@ const jewellery: Category = {
   label: "Jewellery",
   description: "Necklaces, earrings, rings, bangles, bridal sets",
   emoji: "💍",
+  productTypes: [
+    { id: "necklace", label: "Necklace", noun: "necklace", wornOn: "around the neck" },
+    { id: "pendant", label: "Pendant / chain", noun: "pendant on a chain", wornOn: "around the neck" },
+    { id: "earrings", label: "Earrings", noun: "pair of earrings", wornOn: "on both ears, hair tucked back" },
+    { id: "ring", label: "Ring", noun: "ring", wornOn: "on a finger" },
+    { id: "bangles", label: "Bangles / bracelet", noun: "bangle or bracelet", wornOn: "on the wrist" },
+    { id: "jewellery_set", label: "Necklace + earrings set", noun: "matching necklace and earrings set", wornOn: "necklace around the neck and earrings on both ears" },
+    { id: "maang_tikka", label: "Maang tikka", noun: "maang tikka", wornOn: "on the forehead hair parting" },
+    { id: "nose_ring", label: "Nose ring / pin", noun: "nose ring", wornOn: "on the nose" },
+    { id: "anklet", label: "Anklet", noun: "anklet", wornOn: "on the ankle" },
+    { id: "watch", label: "Watch", noun: "wristwatch", wornOn: "on the wrist" },
+    { id: "other_jewellery", label: "Other jewellery", noun: "jewellery piece" },
+  ],
   groups: [
     {
       id: "presentation",
@@ -394,6 +431,10 @@ export function describeSelections(category: CategoryId, values: Record<string, 
     out.push({ group: g.id, label: g.label, choice: c.label, prompt: c.prompt });
   }
   return out;
+}
+
+export function productType(category: CategoryId, id: string | null | undefined): ProductType | undefined {
+  return id ? CATEGORIES[category].productTypes.find((t) => t.id === id) : undefined;
 }
 
 export function isOnModel(category: CategoryId, values: Record<string, string>): boolean {

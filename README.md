@@ -34,11 +34,31 @@ Credits use an append-only ledger with a unique idempotency key per movement, an
 `CHECK >= 0`. Signup bonus, debits, refunds and purchases are therefore exactly-once even under races.
 Payments are fulfilled by both the checkout callback and the webhook, and only the first one credits.
 
+## Product detection (classifier)
+
+On upload, a vision LLM classifies the photo. It runs alongside storage, so it adds no extra upload time. It
+uses the same preference order as the prompt LLM: Gemini Flash-Lite → Groq Llama 4 Scout → Claude Haiku.
+It returns the **category** (clothing / jewellery / other), the **product type** (saree, kurta, necklace,
+earrings, ring…), a **confidence**, a one-line description and photo issues (multiple products, blurry, cut
+off, poor lighting).
+
+- **Studio** pre-selects the detected category and type. It shows a warning when the seller picks something
+  else, plus an "I'm sure — use my selection" override.
+- **Server** (`reconcileProduct`, `src/lib/classify/reconcile.ts`): a detection with confidence ≥ 0.75 corrects a
+  mismatched category or type. Options from the wrong category are replaced with that category's first preset.
+  The correction is stored on the generation and shown to the seller. Photos that are confidently not
+  clothing or jewellery are refused with 422, without charging. Low-confidence or failed detection never
+  blocks: the seller's choice is used as is.
+- **Prompts** use the precise product noun, the classifier's description and where the piece is worn (for
+  example "earrings on both ears") for on-model shots, so the model doesn't put a necklace on a wrist.
+- `CLASSIFIER_MODE=mock` (tests) uses a brightness heuristic: dark photo → ring, otherwise dress. `off`
+  disables detection.
+
 ## Adding a product category
 
 Add an entry in `src/lib/catalog/options.ts` with its option groups (each choice carries a prompt
 fragment), presets and any directions in `src/lib/prompt/shared.ts`. The Studio UI and prompt builder
-pick it up automatically.
+pick it up automatically. Add its `productTypes` too, and the classifier will learn the new labels.
 
 ## Local development (no external accounts needed)
 

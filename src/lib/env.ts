@@ -42,6 +42,9 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_PROMPT_MODEL: z.string().default("claude-haiku-5-5"),
 
+  /** Product-photo classifier: auto = first configured vision LLM, mock = offline heuristic, off = disabled. */
+  CLASSIFIER_MODE: z.enum(["auto", "mock", "off"]).default("auto"),
+
   // Image providers
   /**
    * live: paid production chains (fal / Gemini / OpenAI)

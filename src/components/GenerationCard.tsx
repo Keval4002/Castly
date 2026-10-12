@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { aspectRatio, CATEGORIES, type CategoryId } from "@/lib/catalog/options";
+import { aspectRatio, CATEGORIES, productType, type CategoryId } from "@/lib/catalog/options";
+import { describeCorrection } from "@/lib/classify/reconcile";
 import { downloadImage } from "@/lib/client/fetcher";
 import { isActive, type GenerationDTO } from "@/lib/client/types";
 import { TIERS, type TierId } from "@/lib/pricing";
@@ -38,7 +39,8 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
-            {CATEGORIES[gen.category as CategoryId]?.label} · {TIERS[gen.tier as TierId]?.label} · {gen.aspectRatio}
+            {CATEGORIES[gen.category as CategoryId]?.label}
+            {gen.productType && ` › ${productType(gen.category as CategoryId, gen.productType)?.label ?? gen.productType}`} · {TIERS[gen.tier as TierId]?.label} · {gen.aspectRatio}
           </p>
           <p className="truncate text-xs text-ink-2">{gen.productSummary || summary(gen).join(" · ")}</p>
         </div>
@@ -89,6 +91,11 @@ export function GenerationCard({ gen, onRerun }: { gen: GenerationDTO; onRerun?:
           </div>
         ))}
       </div>
+      {gen.corrections.length > 0 && (
+        <p className="px-4 pb-3 text-xs text-blue-800" data-testid="card-correction">
+          Auto-corrected from your photo: {gen.corrections.map(describeCorrection).join("; ")}
+        </p>
+      )}
       {gen.error && !active && gen.status === "failed" && <p className="px-4 pb-4 text-sm text-err">{gen.error}</p>}
 
       {open !== null && (

@@ -1,8 +1,12 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { api, HttpError, rateLimit } from "@/lib/api";
 import { saveAsset, signAssets } from "@/lib/assets";
 import { requireProfile } from "@/lib/auth/session";
-import { normalizeUpload } from "@/lib/image/process";
+import { classifyProduct } from "@/lib/classify/classifier";
+import { db } from "@/lib/db";
+import { assets } from "@/lib/db/schema";
+import { llmPreview, normalizeUpload } from "@/lib/image/process";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +22,18 @@ export const POST = api(async (req) => {
   if (file.size > MAX_BYTES) throw new HttpError(413, "Image is larger than 8 MB", "too_large");
 
   const processed = await normalizeUpload(Buffer.from(await file.arrayBuffer()));
-  const asset = await saveAsset(profile.id, "upload", processed, "uploads");
+  // Classify while the image is being stored — detection adds no extra latency.
+  const [asset, classification] = await Promise.all([
+    saveAsset(profile.id, "upload", processed, "uploads"),
+    llmPreview(processed.data)
+      .then(classifyProduct)
+      .catch((err) => {
+        console.warn("[upload] classification failed", err);
+        return null;
+      }),
+  ]);
+  if (classification) await db().update(assets).set({ classification }).where(eq(assets.id, asset.id));
+
   const urls = (await signAssets([asset.id])).get(asset.id)!;
-  return NextResponse.json({ asset: { id: asset.id, ...urls } }, { status: 201 });
+  return NextResponse.json({ asset: { id: asset.id, ...urls, classification } }, { status: 201 });
 });

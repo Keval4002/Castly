@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { Classification, Correction } from "@/lib/classify/reconcile";
 import {
   check,
   index,
@@ -84,6 +85,8 @@ export const assets = pgTable(
     width: integer("width").notNull(),
     height: integer("height").notNull(),
     bytes: integer("bytes").notNull(),
+    /** Vision classifier result for uploads (null = unknown / not run). */
+    classification: jsonb("classification").$type<Classification>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("assets_user_idx").on(t.userId, t.createdAt)],
@@ -100,6 +103,9 @@ export const generations = pgTable(
       .notNull()
       .references(() => assets.id),
     category: text("category").notNull(),
+    productType: text("product_type"),
+    /** Category/type fixes applied from the classifier, shown to the user. */
+    corrections: jsonb("corrections").$type<Correction[]>().notNull().default([]),
     tier: text("tier").notNull(),
     aspectRatio: text("aspect_ratio").notNull(),
     options: jsonb("options").$type<Record<string, string>>().notNull(),

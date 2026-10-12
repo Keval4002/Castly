@@ -12,6 +12,8 @@ export interface GenerationDTO {
   id: string;
   status: "queued" | "running" | "succeeded" | "partial" | "failed";
   category: "clothing" | "jewellery";
+  productType: string | null;
+  corrections: { field: "category" | "productType"; from: string | null; to: string }[];
   tier: string;
   aspectRatio: string;
   options: Record<string, string>;

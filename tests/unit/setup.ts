@@ -7,6 +7,7 @@ Object.assign(process.env, {
   STORAGE_DRIVER: "local",
   LOCAL_STORAGE_DIR: ".data/test-storage",
   IMAGE_PROVIDER_MODE: "mock",
+  CLASSIFIER_MODE: "mock",
   PAYMENTS_MOCK: "true",
   PROMPT_LLM: "template",
   RAZORPAY_KEY_SECRET: "rzp_test_secret",
