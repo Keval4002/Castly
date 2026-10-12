@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3100;
-const DATABASE_URL = process.env.E2E_DATABASE_URL ?? "postgres://castly:castly@localhost:5432/castly_test";
+const DATABASE_URL = process.env.E2E_DATABASE_URL ?? "postgres://dukaanshot:dukaanshot@localhost:5432/dukaanshot_test";
 
 /**
  * Full-stack e2e: real Next.js production server + real Postgres, with

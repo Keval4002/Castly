@@ -60,7 +60,7 @@ export async function createGeneration(userId: string, input: CreateGenerationIn
   if (!product.ok) {
     throw new GenerationError(
       `This looks like ${product.description ? `“${product.description}”` : "something other than clothing or jewellery"}. ` +
-        "Castly currently supports clothing and jewellery. If this is wrong, confirm your product type and try again.",
+        "Dukaanshot currently supports clothing and jewellery. If this is wrong, confirm your product type and try again.",
       422,
       "unsupported_product",
     );

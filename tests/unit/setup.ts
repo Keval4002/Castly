@@ -1,7 +1,7 @@
 // Test environment: local Postgres test DB, mocks for every external service.
 Object.assign(process.env, {
   NODE_ENV: "test",
-  DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgres://castly:castly@localhost:5432/castly_test",
+  DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgres://dukaanshot:dukaanshot@localhost:5432/dukaanshot_test",
   SESSION_SECRET: "test-secret-test-secret-test-secret-test",
   AUTH_PROVIDER: "dev",
   STORAGE_DRIVER: "local",

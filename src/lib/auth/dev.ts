@@ -8,7 +8,7 @@ import { env } from "@/lib/env";
  * env() refuses to start a production build with this enabled unless
  * ALLOW_INSECURE_DEV_MODE is explicitly set for e2e runs.
  */
-export const DEV_SESSION_COOKIE = "castly_dev_session";
+export const DEV_SESSION_COOKIE = "dukaanshot_dev_session";
 
 function key() {
   return new TextEncoder().encode(env().SESSION_SECRET);
@@ -16,7 +16,7 @@ function key() {
 
 /** Stable UUID derived from the email so re-login maps to the same profile. */
 export function devUserId(email: string): string {
-  const h = createHash("sha256").update(`castly-dev:${email.toLowerCase()}`).digest("hex");
+  const h = createHash("sha256").update(`dukaanshot-dev:${email.toLowerCase()}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 

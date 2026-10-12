@@ -7,19 +7,19 @@ import * as schema from "./schema";
 export type DB = PostgresJsDatabase<typeof schema>;
 
 // Reuse one pool across hot reloads / lambda invocations.
-const globalForDb = globalThis as unknown as { __castlyDb?: DB; __castlySql?: postgres.Sql };
+const globalForDb = globalThis as unknown as { __dukaanshotDb?: DB; __dukaanshotSql?: postgres.Sql };
 
 export function db(): DB {
-  if (globalForDb.__castlyDb) return globalForDb.__castlyDb;
+  if (globalForDb.__dukaanshotDb) return globalForDb.__dukaanshotDb;
   const client = postgres(env().DATABASE_URL, {
     max: 10,
     idle_timeout: 20,
     // Supabase's transaction pooler (port 6543) does not support prepared statements.
     prepare: false,
   });
-  globalForDb.__castlySql = client;
-  globalForDb.__castlyDb = drizzle(client, { schema });
-  return globalForDb.__castlyDb;
+  globalForDb.__dukaanshotSql = client;
+  globalForDb.__dukaanshotDb = drizzle(client, { schema });
+  return globalForDb.__dukaanshotDb;
 }
 
 export { schema };

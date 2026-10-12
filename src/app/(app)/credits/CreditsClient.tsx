@@ -111,7 +111,7 @@ export function CreditsClient({
           amount: checkout.amount,
           currency: checkout.currency,
           order_id: checkout.orderId,
-          name: "Castly",
+          name: "Dukaanshot",
           description: `${pack.credits} credits · ${pack.label}`,
           prefill: { email },
           theme: { color: "#c2410c" },

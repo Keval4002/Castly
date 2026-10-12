@@ -3,6 +3,9 @@ import { AppHeader } from "@/components/AppHeader";
 import { CreditsProvider } from "@/components/CreditsProvider";
 import { getCurrentProfile } from "@/lib/auth/session";
 
+// Signed-in pages are per-user: never prerender them at build time.
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
