@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { cache } from "react";
 import { ensureProfile } from "@/lib/credits";
 import type { Profile } from "@/lib/db/schema";
@@ -14,6 +15,8 @@ export interface SessionUser {
 }
 
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
+  // Sessions only exist at request time; also keeps env() out of build-time prerendering.
+  await connection();
   if (env().AUTH_PROVIDER === "dev") {
     const token = (await cookies()).get(DEV_SESSION_COOKIE)?.value;
     return token ? verifyDevSession(token) : null;
